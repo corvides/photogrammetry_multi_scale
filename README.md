@@ -247,3 +247,24 @@ Phase-1 reference objects:
 Code is shared through git. Project knowledge for Claude Code lives in
 `CLAUDE.md` (committed), so a Claude Code session on any machine starts with
 the same context.
+
+## 11. Development quick start
+
+```sh
+uv sync                          # base deps (+ dev group: pytest, ruff)
+uv sync --extra sfm --extra eval # later stages: pycolmap, open3d, trimesh
+uv run metrogram check-config configs/*/*.yaml
+PYTHONPATH= uv run pytest -q
+uv run ruff check . && uv run ruff format .
+```
+
+- Package: `metrogram` (`src/metrogram/`), CLI `metrogram <subcommand>`.
+- Configs: `configs/devices/`, `configs/targets/`, `configs/presets/`. Each
+  YAML file has a `kind`. Lengths are in metres, with the unit in the key name.
+  Unknown keys are rejected.
+- No `.python-version` is pinned: each machine uses its own interpreter
+  (3.10 laptop, 3.12 desktop/server) against the same `uv.lock`.
+- **ROS note:** a sourced ROS Humble puts `/opt/ros/...` on `PYTHONPATH`. Its
+  pytest plugins then break test collection, and its packages can shadow the
+  venv's. Clear it for this project (`PYTHONPATH= uv run ...`), or use an
+  alias such as `alias uvr='PYTHONPATH= uv run'`.

@@ -1,0 +1,7 @@
+kind: preset
+name: cpu-full
+max_image_size_px: 3000
+sfm: {use_gpu: false, matcher: exhaustive, max_num_features: 16384}
+dense: {use_cuda: false, resolution_level: 1, number_views: 8, min_resolution_px: 640}
+mesh: {decimate_target_faces: 1000000, refine: false, texture: true}
+notes: Desktop CPU; usable for evaluation, below full accuracy.

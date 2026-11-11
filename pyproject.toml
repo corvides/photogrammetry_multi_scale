@@ -1,0 +1,42 @@
+[project]
+name = "metrogram"
+version = "0.1.0"
+description = "Scale- and device-agnostic metric photogrammetry with error reports"
+readme = "README.md"
+authors = [
+    { name = "diplodocuslongus", email = "hinoki.kuaimu@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "opencv-python-headless>=4.10",
+    "pyyaml>=6.0",
+    "rawpy>=0.21",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+# Added per stage so the base install stays light on every machine.
+sfm = ["pycolmap>=3.11"]
+eval = ["open3d>=0.19", "trimesh>=4.0"]
+
+[project.scripts]
+metrogram = "metrogram.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

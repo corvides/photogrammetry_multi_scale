@@ -1,0 +1,7 @@
+kind: preset
+name: cpu-fast
+max_image_size_px: 2000
+sfm: {use_gpu: false, matcher: exhaustive, max_num_features: 8192}
+dense: {use_cuda: false, resolution_level: 2, number_views: 5, min_resolution_px: 640}
+mesh: {decimate_target_faces: 200000, refine: false, texture: true}
+notes: Laptop-friendly; quick look at coverage and gross errors.

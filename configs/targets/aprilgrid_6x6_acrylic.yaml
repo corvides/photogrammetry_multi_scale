@@ -1,0 +1,16 @@
+kind: target
+type: aprilgrid
+name: aprilgrid_6x6_acrylic
+rows: 6
+cols: 6
+tag_family: 36h11
+tag_size_m: 0.04313        # black square edge, user measurement
+tag_spacing_ratio: 0.391   # gap / tag_size, user measurement (Kalibr default is 0.3)
+id_origin: bottom_left     # Kalibr convention as believed; CHECK on an image
+id_origin_verified: false
+material: acrylic (printed in Taiwan)
+thermal_expansion_per_K: 7.0e-5
+dimensions_certified: false
+notes: >
+  Original Kalibr YAML/PDF no longer downloadable; values from earlier measurements.
+  Re-measure tag pitch across the full board before trusting scale.

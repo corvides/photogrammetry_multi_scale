@@ -53,11 +53,21 @@ reports) for medical phantoms. Full background and decisions are in
 - Planned targets: ChArUco (A4, certified) for the camera; small matte
   ChArUco for the stereo endoscope.
 
-## Repo conventions (to be refined as code lands)
+## Repo conventions
 
-- `src/` layout package, CLI subcommands per stage: `calibrate`, `sfm`,
-  `markers`, `dense`, `evaluate`, `register`.
-- `configs/devices/`, `configs/targets/`, `configs/presets/`.
+- Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
+  (argparse, `cli.py`). Existing: `check-config`. Planned: `calibrate`,
+  `sfm`, `markers`, `dense`, `evaluate`, `register`.
+- `config.py`: strict frozen dataclasses loaded from YAML (`kind:
+  device|target|preset`; targets also need `type: aprilgrid|charuco`).
+  Unknown keys are errors. Add new config fields there and in the shipped YAML.
+- Config files: `configs/devices/`, `configs/targets/`, `configs/presets/`.
+- Base deps stay light; stage-specific heavy deps go in extras (`sfm`, `eval`).
+- No `.python-version` pin (3.10 and 3.12 machines share `uv.lock`).
+- **Laptop has ROS Humble sourced**: always run with `PYTHONPATH= uv run ...`
+  (ROS pytest plugins break collection otherwise).
+- Git is managed by the user only (never commit/stage). Checks before handing over: `uv run ruff format . && uv run ruff check . &&
+  PYTHONPATH= uv run pytest -q`.
 - Data and outputs are outside git (`data/`, `runs/` in `.gitignore`).
 - Tests with pytest on synthetic data (render or project known geometry), so
   they run without a camera.

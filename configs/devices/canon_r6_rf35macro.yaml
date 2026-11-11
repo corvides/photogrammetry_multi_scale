@@ -1,0 +1,16 @@
+kind: device
+name: canon_r6_rf35macro
+camera_make: Canon
+camera_model: EOS R6
+sensor:
+  width_px: 5472
+  height_px: 3648
+  pixel_pitch_um: 6.56
+lens:
+  model: RF 35mm F1.8 Macro IS STM
+  focal_length_mm: 35.0
+colmap_model: OPENCV
+raw_extension: .CR3
+notes: >
+  Lens IS and IBIS off. Strong barrel distortion normally corrected in software:
+  decode RAW without lens correction. Focus breathing: calibrate per focus setting.

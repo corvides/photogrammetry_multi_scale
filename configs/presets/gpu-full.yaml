@@ -1,0 +1,7 @@
+kind: preset
+name: gpu-full
+max_image_size_px: null
+sfm: {use_gpu: true, matcher: exhaustive, max_num_features: 32768}
+dense: {use_cuda: true, resolution_level: 0, number_views: 0, min_resolution_px: 640}
+mesh: {decimate_target_faces: null, refine: true, texture: true}
+notes: GPU server (RTX PRO 6000, sm_120); full resolution, reference results.

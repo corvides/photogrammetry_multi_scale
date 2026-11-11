@@ -1,0 +1,21 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Data and outputs (large, machine-specific)
+data/
+runs/
+*.CR3
+*.cr3
+*.dng
+*.tif
+*.tiff
+
+# Local Claude Code settings (shared ones go in .claude/settings.json)
+.claude/settings.local.json

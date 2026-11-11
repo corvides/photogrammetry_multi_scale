@@ -1,0 +1,16 @@
+kind: device
+name: xperia_1_iii_main
+camera_make: Sony
+camera_model: Xperia 1 III (main 24 mm-equiv camera)
+sensor:
+  width_px: 4032
+  height_px: 3024
+  pixel_pitch_um: 1.8
+lens:
+  model: built-in main
+  focal_length_mm: 5.1
+colmap_model: OPENCV
+raw_extension: .dng
+notes: >
+  Approximate sensor/lens values; the calibration supersedes them. Force the main lens
+  (no automatic lens switching), EIS off, no digital zoom.
