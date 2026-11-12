@@ -4,6 +4,11 @@ Project: metric photogrammetry pipeline (shape + scale + placement, with error
 reports) for medical phantoms. Full background and decisions are in
 `README.md`. Read it before any design work.
 
+## Session continuity
+
+- Dated worklogs live in `worklog/YYYY-MM-DD.md` (done / open items / NEXT). At the
+  start of a session, read the latest one; at the end, write or update the day's file.
+
 ## Hard constraints
 
 - **Scale-agnostic** (mm to dm) and **device-agnostic**: cameras, lenses
@@ -62,7 +67,8 @@ reports) for medical phantoms. Full background and decisions are in
 
 - Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
   (argparse, `cli.py`). Existing: `check-config`, `calibrate`,
-  `extract-frames`, `sfm`, `markers`. Planned: `markers`, `dense`, `evaluate`, `register`.
+  `extract-frames`, `sfm`, `markers`, `view`, `dense`. Planned: `evaluate`,
+  `register`.
 - `config.py`: strict frozen dataclasses loaded from YAML (`kind:
   device|target|preset`; targets also need `type: aprilgrid|charuco`).
   Unknown keys are errors. Add new config fields there and in the shipped YAML.
@@ -83,8 +89,26 @@ reports) for medical phantoms. Full background and decisions are in
   check points, aligns with robust Umeyama. Outputs `sparse_metric/` (COLMAP,
   board frame, metres) and PLYs written by `ply.py` (binary LE, x y z + rgb;
   overlays are triangle meshes because edge elements are poorly supported).
-  The user has their own viewer (Isaac Sim R&D); match its conventions when
-  they share it.
+  `metrogram view` (`viewer.py`, Open3D, Z-up, metres) overlays PLY layers,
+  frames on board/markers (box extended upward for objects), renders a
+  turntable or `--show`; design adapted from the user's Isaac Sim viewer.
+- OpenMVS is built by `scripts/build_openmvs.sh`, default **v2.3.0** (upstream's
+  Ubuntu 22.04 release: CGAL 5.4, system OpenCV 4.5). v2.4.0 (`--version`)
+  needs OpenCV >= 4.11 and nanoflann >= 1.5, which 22.04 lacks; it also has a
+  wrong `REQUIRED` on libjxl that the script patches. Everything is pinned to
+  commit SHAs and verified; Python bindings off; installs into `~/opt/openmvs`
+  (NOT ~/.local: CMake searches PATH-derived prefixes, so ~/.local would leak
+  CGAL into the user's ROS/colcon builds), CGAL into its own sub-prefix passed
+  via CGAL_DIR. The script refuses to be sourced, never uses sudo, and only
+  strips `/opt/ros/*` from its own CMAKE_PREFIX_PATH (the user's custom
+  prefixes matter to them). The dense stage looks in
+  `~/opt/openmvs/bin/OpenMVS`, then `$OPENMVS_BIN`, then `$PATH`.
+- Dense: `dense.py` runs from `markers/sparse_metric` (board frame) ->
+  COLMAP undistort -> OpenMVS tools with cwd=`work/` (OpenMVS resolves image
+  paths stored in the .mvs relative to the working dir). TextureMesh exports
+  PLY (v2.3.0's OBJ export segfaults); an OBJ copy is made with trimesh for
+  Open3D. `ply.read_vertices` handles OpenMVS's per-point list properties.
+  Report includes a board-plane check (dense points on the board vs z = 0).
 - Tests: `tests/synthetic_scene.py` renders textured quads (cube on a floor)
   from known cameras. Slow tests are marked `@pytest.mark.slow`
   (`-m "not slow"` to skip).
@@ -99,6 +123,8 @@ reports) for medical phantoms. Full background and decisions are in
   (ROS pytest plugins break collection otherwise).
 - Git is managed by the user only (never commit/stage). Checks before handing over: `uv run ruff format . && uv run ruff check . &&
   PYTHONPATH= uv run pytest -q`.
+- `for_reference/` holds user-provided files from other repos: read-only, never
+  modify or format (excluded from ruff). It may disappear; don't depend on it.
 - Data and outputs are outside git (`data/`, `runs/` in `.gitignore`).
 - Tests with pytest on synthetic data (render or project known geometry), so
   they run without a camera.

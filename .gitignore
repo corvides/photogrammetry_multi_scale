@@ -19,3 +19,6 @@ runs/
 
 # Local Claude Code settings (shared ones go in .claude/settings.json)
 .claude/settings.local.json
+
+# OpenMVS writes <Tool>-<timestamp>.log into the working directory
+*.log

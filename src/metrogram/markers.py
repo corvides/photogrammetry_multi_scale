@@ -286,13 +286,14 @@ def run(rec, image_dir: Path, detector: BoardDetector, s: MarkerSettings, log=sy
 def _report(res: MarkerResult, s: MarkerSettings, meta: dict) -> dict:
     return {
         **meta,
+        "board_extent_m": meta.get("board_extent_m"),
         "settings": vars(s),
         "units": "metres (board frame); errors in mm",
         "board_from_sfm": {
             "scale_m_per_sfm_unit": res.sim.scale,
             "matrix_4x4": res.sim.matrix().tolist(),
         },
-        "images": {"registered": res.n_images, "with_target": res.n_images_with_target},
+        "image_counts": {"registered": res.n_images, "with_target": res.n_images_with_target},
         "errors": res.stats,
         "scale_check_rel": res.scale_check_rel,
         "check_distances": res.distance_errors_rel,
@@ -321,6 +322,8 @@ def write(res: MarkerResult, rec, detector: BoardDetector, s, out: Path, meta: d
     from metrogram import ply
 
     out.mkdir(parents=True, exist_ok=True)
+    allb = detector.all_points()
+    meta = {**meta, "board_extent_m": [allb[:, :2].min(0).tolist(), allb[:, :2].max(0).tolist()]}
     (out / "markers_report.json").write_text(json.dumps(_report(res, s, meta), indent=1))
 
     # metric COLMAP model in the board frame
@@ -336,7 +339,6 @@ def write(res: MarkerResult, rec, detector: BoardDetector, s, out: Path, meta: d
     rgb = np.array([p.color for p in pts], np.uint8)
     ply.write_points(out / "points_metric.ply", xyz, rgb, comment=note)
 
-    allb = detector.all_points()
     lo, hi = allb[:, :2].min(0), allb[:, :2].max(0)
     extent = float(np.max(hi - lo))
     w = extent / 300

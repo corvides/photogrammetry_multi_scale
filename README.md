@@ -248,7 +248,12 @@ Phase-1 reference objects:
      floor), check-point scale within 36 ppm.
    - Markers, phone video (EIS on, 1080p): check points 0.64 mm RMS (0.30 mm
      in-plane, 0.56 mm out-of-plane), 400 mm distance off by 0.22 mm.
-3. **Dense** (`dense`) with OpenMVS: CPU and GPU presets.
+3. **Dense** (`dense`) with OpenMVS ✅ (CPU; GPU build on the server pending).
+   - Synthetic: 80 mm cube top at 80.09 mm; board plane RMS 0.18 mm, tilt
+     0.003°, offset +0.30 mm (open item: small systematic upward bias of the
+     board in the dense cloud, ~0.5 px).
+   - Outputs: `dense_points.ply`, `mesh.ply`, `textured/mesh_textured.ply`
+     (+ PNG atlas; OBJ copy in `textured/obj/`), `dense_report.json`.
 4. **Evaluation** (`evaluate`) on simple shapes.
 5. Phantom (TAPP), coating and lighting study.
 6. CT registration (`register`).
@@ -301,6 +306,21 @@ Outputs of `markers` (in `<sfm run>/markers/`):
 | `markers.ply` | triangulated target points (blue control, orange check, gray rejected) |
 | `sparse_metric/` | COLMAP model in the board frame (metres) |
 | `markers_report.json`, `markers.png` | alignment, errors, scale check, per-point data |
+
+```sh
+# look at results: Z-up turntable PNGs in <dir>/views/, or --show (interactive)
+uv run metrogram view runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast/markers --views 6
+uv run metrogram view runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast/markers --show
+
+# dense cloud + mesh + texture (OpenMVS), metric, board frame
+uv run metrogram dense runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast/markers -p configs/presets/cpu-fast.yaml
+uv run metrogram view runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast/dense_cpu-fast/mesh.ply \
+    runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast/markers
+
+# OpenMVS (dense stage): CPU build here, CUDA on the server (see script header)
+scripts/build_openmvs.sh                    # v2.3.0 -> ~/opt/openmvs/bin/OpenMVS (no sudo)
+scripts/build_openmvs.sh --cuda --arch 120  # RTX PRO 6000 (Blackwell)
+```
 
 ```sh
 uv run ruff check . && uv run ruff format .

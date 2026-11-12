@@ -103,3 +103,81 @@ class MeshBuilder:
             fh.write(_header(len(v), len(f), comment))
             fh.write(_vertices(v, c))
             fh.write(faces.tobytes())
+
+
+_PLY_TYPES = {
+    "char": "i1", "int8": "i1", "uchar": "u1", "uint8": "u1",
+    "short": "i2", "int16": "i2", "ushort": "u2", "uint16": "u2",
+    "int": "i4", "int32": "i4", "uint": "u4", "uint32": "u4",
+    "float": "f4", "float32": "f4", "double": "f8", "float64": "f8",
+}  # fmt: skip
+
+
+def read_header(path: str | Path) -> tuple[dict[str, int], str, int]:
+    """({element: count}, format, header byte length)."""
+    counts, fmt = {}, ""
+    with open(path, "rb") as fh:
+        while True:
+            line = fh.readline()
+            if not line:
+                raise ValueError(f"{path}: truncated PLY header")
+            t = line.decode("ascii", "replace").split()
+            if t[:1] == ["format"]:
+                fmt = t[1]
+            elif t[:1] == ["element"]:
+                counts[t[1]] = int(t[2])
+            elif t[:1] == ["end_header"]:
+                return counts, fmt, fh.tell()
+
+
+def read_vertices(path: str | Path, chunk: int = 500_000) -> np.ndarray:
+    """Scalar properties of the vertex element of a binary little-endian PLY.
+
+    Handles list properties after the scalars (e.g. OpenMVS's per-point
+    ``view_indices`` / ``view_weights``): they are skipped. The vertex element
+    must come first (true for COLMAP, OpenMVS and our writers).
+    """
+    scalars: list[tuple[str, str]] = []
+    lists: list[tuple[np.dtype, np.dtype]] = []  # (count type, item type)
+    in_vertex, n = False, 0
+    with open(path, "rb") as fh:
+        while True:
+            t = fh.readline().decode("ascii", "replace").split()
+            if t[:1] == ["format"] and t[1] != "binary_little_endian":
+                raise ValueError(f"{path}: only binary_little_endian PLY supported")
+            if t[:1] == ["element"]:
+                in_vertex = t[1] == "vertex" and n == 0
+                if in_vertex:
+                    n = int(t[2])
+            elif t[:1] == ["property"] and in_vertex:
+                if t[1] == "list":
+                    lists.append(
+                        (np.dtype("<" + _PLY_TYPES[t[2]]), np.dtype("<" + _PLY_TYPES[t[3]]))
+                    )
+                elif lists:
+                    raise ValueError(f"{path}: scalar property after a list is not supported")
+                else:
+                    scalars.append((t[2], "<" + _PLY_TYPES[t[1]]))
+            elif t[:1] == ["end_header"]:
+                break
+        dt = np.dtype(scalars)
+        if not lists:
+            return np.frombuffer(fh.read(n * dt.itemsize), dtype=dt, count=n)
+        buf = fh.read()
+    # Variable-length records: one pass to find each record start.
+    raw = np.frombuffer(buf, np.uint8)
+    fixed = dt.itemsize
+    starts = np.empty(n, np.int64)
+    off = 0
+    for i in range(n):
+        starts[i] = off
+        off += fixed
+        for ct, it in lists:
+            cnt = int.from_bytes(buf[off : off + ct.itemsize], "little")
+            off += ct.itemsize + cnt * it.itemsize
+    out = np.empty(n, dt)
+    cols = np.arange(fixed)
+    for a in range(0, n, chunk):
+        b = min(a + chunk, n)
+        out[a:b] = raw[starts[a:b, None] + cols].copy().view(dt).ravel()
+    return out

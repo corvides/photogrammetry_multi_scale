@@ -146,10 +146,91 @@ def _cmd_markers(args: argparse.Namespace) -> int:
     rec = pycolmap.Reconstruction(str(model_dir))
     res = markers.run(rec, image_dir, detector, s, log=None if args.quiet else sys.stderr)
     out = Path(args.out or run_dir / "markers")
-    meta = {"sfm_model": str(model_dir), "images": str(image_dir), "target": target.name}
+    meta = {"sfm_model": str(model_dir), "image_dir": str(image_dir), "target": target.name}
     markers.write(res, rec, detector, s, out, meta)
     print(markers.summary(res))
     print(f"outputs in {out}/ (PLY: points_metric, cameras, board_frame, markers)")
+    return 0
+
+
+def _cmd_view(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    import numpy as np
+
+    from metrogram import viewer
+
+    layers = viewer.load(args.paths)
+    for ly in layers:
+        n = len(ly.points())
+        print(f"  {ly.name}: {'mesh' if ly.is_mesh else 'points'}, {n} vertices")
+    if args.crop == "none":
+        lo, hi = viewer.roi(layers, args.margin)
+    elif args.crop == "auto":
+        lo, hi = viewer.roi(layers, args.margin)
+        viewer.crop(layers, lo, hi)
+    else:
+        v = [float(x) for x in args.crop.split(",")]
+        if len(v) != 6:
+            raise ValueError("--crop needs xmin,ymin,zmin,xmax,ymax,zmax (metres)")
+        lo, hi = np.array(v[:3]), np.array(v[3:])
+        viewer.crop(layers, lo, hi)
+    if args.frame_from:
+        ref = viewer.load([args.frame_from])
+        lo, hi = viewer.roi(ref, args.margin)
+    print(f"  framing box {np.round(lo, 3)} .. {np.round(hi, 3)} m")
+    if args.show:
+        viewer.show(layers, title=" + ".join(ly.name for ly in layers))
+        return 0
+    if args.azimuths:
+        az = [float(x) for x in args.azimuths.split(",")]
+    else:
+        az = [360.0 * i / args.views for i in range(args.views)]
+    el = [float(x) for x in args.elevs.split(",")] if args.elevs else [args.elev]
+    if len(el) == 1:
+        el *= len(az)
+    first = Path(args.paths[0])
+    out = Path(args.out or (first if first.is_dir() else first.parent) / "views")
+    base = first.name if first.is_dir() else first.stem
+    files = viewer.turntable(
+        layers, out, base, lo, hi, az, el, (args.width, args.height), args.zoom, args.point_size
+    )
+    print(f"wrote {len(files)} views to {out}/")
+    return 0
+
+
+def _cmd_dense(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    from metrogram import dense
+    from metrogram.config import Preset
+
+    mdir = Path(args.markers)
+    rep = json.loads((mdir / "markers_report.json").read_text())
+    image_dir = Path(args.images or rep["image_dir"])
+    extent = rep.get("board_extent_m")
+    if extent is None and (mdir / "board_frame.ply").exists():  # older markers runs
+        from metrogram import ply
+
+        v = ply.read_vertices(mdir / "board_frame.ply")
+        z0 = abs(v["z"]) < 1e-3
+        extent = [
+            [float(v["x"][z0].min()), float(v["y"][z0].min())],
+            [float(v["x"][z0].max()), float(v["y"][z0].max())],
+        ]
+    preset = load_config(args.preset)
+    if not isinstance(preset, Preset):
+        raise ConfigError(f"{args.preset} is not a preset config")
+    s = dense.settings_from_preset(preset)
+    if args.no_texture:
+        s.texture = False
+    out = Path(args.out or mdir.parent / f"dense_{preset.name}")
+    res = dense.run(
+        mdir / "sparse_metric", image_dir, out, s, extent, log=None if args.quiet else sys.stderr
+    )
+    print(dense.summary(res))
+    print(f"outputs in {out}/ ; view: metrogram view {out}/mesh.ply {mdir}")
     return 0
 
 
@@ -244,6 +325,45 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("-o", "--out", help="output dir (default <sfm>/markers)")
     c.add_argument("-q", "--quiet", action="store_true")
     c.set_defaults(func=_cmd_markers)
+
+    c = sub.add_parser(
+        "view",
+        help="render PLY layers (files or output dirs) as a Z-up turntable, or --show",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    c.add_argument("paths", nargs="+", help=".ply files and/or dirs (all *.ply in a dir)")
+    c.add_argument("--show", action="store_true", help="interactive window instead of PNGs")
+    c.add_argument(
+        "--crop",
+        default="auto",
+        help="auto (box around board/markers, else 1-99%% of points), none, "
+        "or xmin,ymin,zmin,xmax,ymax,zmax in metres; cameras/board never cropped",
+    )
+    c.add_argument("--margin", type=float, default=0.5, help="auto box growth (x box size)")
+    c.add_argument("--frame-from", help="take framing from this PLY/dir (fixed viewpoint)")
+    c.add_argument("--views", type=int, default=6)
+    c.add_argument("--azimuths", help="explicit azimuths in deg, e.g. 0,90,180")
+    c.add_argument("--elev", type=float, default=35.0, help="deg; 90 = top view")
+    c.add_argument("--elevs", help="explicit elevations, paired with --azimuths")
+    c.add_argument("--zoom", type=float, default=1.9, help="distance / framing radius")
+    c.add_argument("--point-size", type=float, default=2.0)
+    c.add_argument("--width", type=int, default=1280)
+    c.add_argument("--height", type=int, default=960)
+    c.add_argument("-o", "--out", help="output dir (default <first path>/views)")
+    c.set_defaults(func=_cmd_view)
+
+    c = sub.add_parser(
+        "dense",
+        help="dense cloud + mesh (+ texture) with OpenMVS, metric, board frame",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    c.add_argument("markers", help="markers output dir (with sparse_metric/)")
+    c.add_argument("-p", "--preset", default="configs/presets/cpu-fast.yaml")
+    c.add_argument("--images", help="image dir (default: from markers_report.json)")
+    c.add_argument("--no-texture", action="store_true")
+    c.add_argument("-o", "--out", help="output dir (default <sfm run>/dense_<preset>)")
+    c.add_argument("-q", "--quiet", action="store_true")
+    c.set_defaults(func=_cmd_dense)
     return p
 
 

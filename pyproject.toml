@@ -34,6 +34,8 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# user-provided reference material: never lint/format
+extend-exclude = ["for_reference"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
