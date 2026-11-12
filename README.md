@@ -238,12 +238,16 @@ Phase-1 reference objects:
    - RAW → linear TIFF.
    - Export to COLMAP / Kalibr formats.
    - Report: reprojection error, coverage heatmap, parameter uncertainty.
-2. **SfM** (`sfm`) with known intrinsics ✅. Next: marker detection and
-   frame alignment (`markers`).
+2. **SfM** (`sfm`) with known intrinsics ✅, **markers / metric frame**
+   (`markers`) ✅.
    - Synthetic check: cameras around a textured 10 cm cube recovered to
      ≤ 69 µm (mean 34 µm) at a 0.45 m radius.
    - Video smoke test: 120/120 frames registered, 0.85 px mean reprojection
      error (EIS video).
+   - Markers, synthetic: check points 0.10 mm RMS (the tag-corner detection
+     floor), check-point scale within 36 ppm.
+   - Markers, phone video (EIS on, 1080p): check points 0.64 mm RMS (0.30 mm
+     in-plane, 0.56 mm out-of-plane), 400 mm distance off by 0.22 mm.
 3. **Dense** (`dense`) with OpenMVS: CPU and GPU presets.
 4. **Evaluation** (`evaluate`) on simple shapes.
 5. Phantom (TAPP), coating and lighting study.
@@ -281,6 +285,24 @@ uv run metrogram extract-frames data/raw/xperia1m3_aprilgrid_eis.mp4 -n 120
 uv run metrogram sfm data/frames/xperia1m3_aprilgrid_eis \
     -c runs/calib/xperia1m3_aprilgrid_eis_opencv/calibration.yaml \
     -p configs/presets/cpu-fast.yaml --matcher sequential
+
+# metric scale + board frame; PLYs for any viewer (metres, board frame)
+uv run metrogram markers runs/sfm/xperia1m3_aprilgrid_eis_cpu-fast \
+    -t configs/targets/aprilgrid_6x6_acrylic.yaml
+```
+
+Outputs of `markers` (in `<sfm run>/markers/`):
+
+| File | Content |
+|---|---|
+| `points_metric.ply` | sparse point cloud, colored, board frame, metres |
+| `cameras.ply` | camera frustums (mesh; a tick marks the image top) |
+| `board_frame.ply` | board outline + axes (x red, y green, z blue) |
+| `markers.ply` | triangulated target points (blue control, orange check, gray rejected) |
+| `sparse_metric/` | COLMAP model in the board frame (metres) |
+| `markers_report.json`, `markers.png` | alignment, errors, scale check, per-point data |
+
+```sh
 uv run ruff check . && uv run ruff format .
 ```
 

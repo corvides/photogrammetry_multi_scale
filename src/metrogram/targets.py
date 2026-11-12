@@ -62,6 +62,11 @@ class AprilGridDetector:
     def all_points(self) -> np.ndarray:
         return np.vstack([self.tag_corners(i) for i in range(self.n_tags)])
 
+    @staticmethod
+    def group_of(point_id: int) -> int:
+        """Hold-out unit: the tag (its 4 corners are not independent)."""
+        return int(point_id) // 4
+
     def detect(self, gray: np.ndarray) -> Detection | None:
         corners, ids, _ = self._det.detectMarkers(gray)
         if ids is None:
@@ -98,6 +103,10 @@ class CharucoDetector:
 
     def all_points(self) -> np.ndarray:
         return self._corners
+
+    @staticmethod
+    def group_of(point_id: int) -> int:
+        return int(point_id)
 
     def detect(self, gray: np.ndarray) -> Detection | None:
         cc, cid, _, _ = self._det.detectBoard(gray)

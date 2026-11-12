@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from synthetic_scene import canvas_to_board, render_board
 
 from metrogram import calibration, calibration_io
 from metrogram.config import load_config
@@ -14,37 +15,11 @@ from metrogram.targets import AprilGridDetector
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 SIZE = (1280, 960)
 K_TRUE = np.array([[1000.0, 0, 642.0], [0, 1000.0, 478.0], [0, 0, 1]])
-PPM = 5000.0  # board rendering resolution, px per metre
-MARGIN = 0.02  # white margin around the tags, metres
 
 
 @pytest.fixture(scope="module")
 def target():
     return load_config(CONFIGS / "targets/aprilgrid_6x6_acrylic.yaml")
-
-
-def render_board(t) -> np.ndarray:
-    """Kalibr-like board: tags rotated by t.tag_rotation_deg, y up, tag 0 bottom-left."""
-    w, h = t.extent_m
-    W, H = int((w + 2 * MARGIN) * PPM), int((h + 2 * MARGIN) * PPM)
-    canvas = np.full((H, W), 255, np.uint8)
-    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
-    side = int(round(t.tag_size_m * PPM))
-    for tag in range(t.rows * t.cols):
-        r, c = divmod(tag, t.cols)
-        img = cv2.aruco.generateImageMarker(d, tag, side, borderBits=1)
-        img = np.rot90(img, k=t.tag_rotation_deg // 90)  # CCW, as seen with y up
-        x0 = MARGIN + c * t.pitch_m
-        y_top = MARGIN + r * t.pitch_m + t.tag_size_m  # board y of the tag's top edge
-        u, v = int(round(x0 * PPM)), int(round((h + 2 * MARGIN - y_top) * PPM))
-        canvas[v : v + side, u : u + side] = img
-    return canvas
-
-
-def canvas_to_board(t) -> np.ndarray:
-    """Homography canvas pixel -> board metres (x right, y up, origin at tag 0)."""
-    h = t.extent_m[1]
-    return np.array([[1 / PPM, 0, -MARGIN], [0, -1 / PPM, h + MARGIN], [0, 0, 1]], dtype=np.float64)
 
 
 def synth_views(t, n=16, seed=1):

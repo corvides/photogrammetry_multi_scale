@@ -62,7 +62,7 @@ reports) for medical phantoms. Full background and decisions are in
 
 - Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
   (argparse, `cli.py`). Existing: `check-config`, `calibrate`,
-  `extract-frames`, `sfm`. Planned: `markers`, `dense`, `evaluate`, `register`.
+  `extract-frames`, `sfm`, `markers`. Planned: `markers`, `dense`, `evaluate`, `register`.
 - `config.py`: strict frozen dataclasses loaded from YAML (`kind:
   device|target|preset`; targets also need `type: aprilgrid|charuco`).
   Unknown keys are errors. Add new config fields there and in the shipped YAML.
@@ -77,11 +77,21 @@ reports) for medical phantoms. Full background and decisions are in
   refined. Images are downscaled by the preset and intrinsics scaled
   accordingly; `extraction.max_image_size` is set so COLMAP never downscales
   silently. `geometry.umeyama` = similarity alignment (reuse it for markers).
+- Markers: `markers.py` detects the target in the SfM images, drops tags
+  inconsistent with one board homography per image (occlusion/false decodes),
+  triangulates (midpoint + LM on pixels), holds out every 4th tag/cell as
+  check points, aligns with robust Umeyama. Outputs `sparse_metric/` (COLMAP,
+  board frame, metres) and PLYs written by `ply.py` (binary LE, x y z + rgb;
+  overlays are triangle meshes because edge elements are poorly supported).
+  The user has their own viewer (Isaac Sim R&D); match its conventions when
+  they share it.
 - Tests: `tests/synthetic_scene.py` renders textured quads (cube on a floor)
   from known cameras. Slow tests are marked `@pytest.mark.slow`
   (`-m "not slow"` to skip).
-- Synthetic tests must supersample when rendering (plain perspective warps
-  alias the edges: 0.4 px error instead of 0.2 px).
+- Synthetic rendering: supersample (plain perspective warps alias edges),
+  map texture pixel *edges* to quad edges, and use target dimensions that are
+  whole texture pixels (else tag positions are quantized). Tag-corner
+  detection floor is ~0.2 px even on perfect renders.
 - Config files: `configs/devices/`, `configs/targets/`, `configs/presets/`.
 - Base deps stay light; stage-specific heavy deps go in extras (`sfm`, `eval`).
 - No `.python-version` pin (3.10 and 3.12 machines share `uv.lock`).

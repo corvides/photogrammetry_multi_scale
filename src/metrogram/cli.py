@@ -116,6 +116,43 @@ def _cmd_sfm(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_markers(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    import pycolmap
+
+    from metrogram import markers
+    from metrogram.targets import make_detector
+
+    run_dir = Path(args.sfm)
+    report = run_dir / "sfm_report.json"
+    if report.exists():
+        info = json.loads(report.read_text())
+        model_dir, image_dir = Path(info["out_dir"]), Path(info["image_dir"])
+    else:  # a bare COLMAP model directory
+        model_dir, image_dir = run_dir, None
+    if args.images:
+        image_dir = Path(args.images)
+    if image_dir is None:
+        raise ValueError("no sfm_report.json found: pass --images")
+    target = load_config(args.target)
+    detector = make_detector(target)
+    s = markers.MarkerSettings(
+        check_every=args.check_every,
+        max_reproj_px=args.max_reproj_px,
+        min_views=args.min_views,
+    )
+    rec = pycolmap.Reconstruction(str(model_dir))
+    res = markers.run(rec, image_dir, detector, s, log=None if args.quiet else sys.stderr)
+    out = Path(args.out or run_dir / "markers")
+    meta = {"sfm_model": str(model_dir), "images": str(image_dir), "target": target.name}
+    markers.write(res, rec, detector, s, out, meta)
+    print(markers.summary(res))
+    print(f"outputs in {out}/ (PLY: points_metric, cameras, board_frame, markers)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="metrogram", description=__doc__)
     p.add_argument("--version", action="version", version=f"metrogram {__version__}")
@@ -187,6 +224,26 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("-o", "--out", help="output dir (default runs/sfm/<images>_<preset>)")
     c.add_argument("-q", "--quiet", action="store_true")
     c.set_defaults(func=_cmd_sfm)
+
+    c = sub.add_parser(
+        "markers",
+        help="metric scale + board frame from the target seen in the SfM images",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    c.add_argument("sfm", help="SfM run dir (with sfm_report.json) or a COLMAP model dir")
+    c.add_argument("-t", "--target", required=True, help="target config YAML")
+    c.add_argument("--images", help="image dir (default: from sfm_report.json)")
+    c.add_argument(
+        "--check-every",
+        type=int,
+        default=4,
+        help="hold out every n-th tag/cell as check points (0: none)",
+    )
+    c.add_argument("--max-reproj-px", type=float, default=2.0)
+    c.add_argument("--min-views", type=int, default=3)
+    c.add_argument("-o", "--out", help="output dir (default <sfm>/markers)")
+    c.add_argument("-q", "--quiet", action="store_true")
+    c.set_defaults(func=_cmd_markers)
     return p
 
 

@@ -187,3 +187,75 @@ def all_plots(result, out: Path) -> list[str]:
     for name, fn in files.items():
         fn(result, out / name)
     return list(files)
+
+
+def markers(res, path: Path):
+    from metrogram.markers import ROLE_RGB
+
+    col = {r: "#{:02x}{:02x}{:02x}".format(*c) for r, c in ROLE_RGB.items()}
+    fig, (a1, a2, a3) = plt.subplots(
+        1, 3, figsize=(17, 5.4), constrained_layout=True, width_ratios=[1, 1.15, 0.9]
+    )
+    pts = res.points
+    B = np.array([p.board for p in pts]) * 1e3
+    E = np.array([p.error_m for p in pts]) * 1e3
+    span = np.ptp(B[:, :2], axis=0).max()
+    emax = max(np.linalg.norm(E[:, :2], axis=1).max(), 1e-9)
+    gain = 0.08 * span / emax  # longest arrow = 8 % of the board
+    for role in ("control", "check", "rejected"):
+        m = np.array([p.role == role for p in pts])
+        if not m.any():
+            continue
+        a1.scatter(B[m, 0], B[m, 1], s=10, color=col[role], label=role, zorder=3)
+        a1.quiver(
+            B[m, 0],
+            B[m, 1],
+            E[m, 0] * gain,
+            E[m, 1] * gain,
+            color=col[role],
+            angles="xy",
+            scale_units="xy",
+            scale=1,
+            width=0.003,
+        )
+    a1.set_title(f"In-plane error, arrows x{gain:.0f} (longest {emax:.2f} mm)", loc="left")
+    a1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncols=3)
+
+    zmax = max(np.abs(E[:, 2]).max(), 1e-9)
+    sc = a2.scatter(
+        B[:, 0],
+        B[:, 1],
+        c=E[:, 2],
+        cmap="coolwarm",
+        vmin=-zmax,
+        vmax=zmax,
+        s=28,
+        edgecolors=[col[p.role] for p in pts],
+        linewidths=0.8,
+    )
+    fig.colorbar(sc, ax=a2, label="out-of-plane error z [mm]", shrink=0.85)
+    a2.set_title("Out-of-plane error (pattern = bowl/tilt, noise = random)", loc="left")
+    for a in (a1, a2):
+        a.set_aspect("equal")
+        a.set_xlabel("board x [mm]")
+        a.set_ylabel("board y [mm]")
+
+    bins = np.linspace(0, np.linalg.norm(E, axis=1).max() * 1.05, 25)
+    for role in ("control", "check"):
+        e = [np.linalg.norm(p.error_m) * 1e3 for p in pts if p.role == role]
+        if e:
+            a3.hist(
+                e,
+                bins=bins,
+                histtype="step",
+                linewidth=2,
+                color=col[role],
+                label=f"{role} ({len(e)})",
+            )
+    a3.set_xlabel("3D error [mm]")
+    a3.set_ylabel("points")
+    a3.set_title("3D error (check = not used to align)", loc="left")
+    a3.legend()
+    a3.grid(axis="x", visible=False)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)

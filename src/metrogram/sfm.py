@@ -94,6 +94,7 @@ class SfmSettings:
 @dataclass
 class SfmResult:
     out_dir: str
+    image_dir: str  # images as read by COLMAP (prepared/resized if needed)
     n_input_images: int
     n_registered: int
     n_points3D: int
@@ -268,6 +269,7 @@ def run(
     cam_final = _camera_dict(next(iter(rec.cameras.values())))
     res = SfmResult(
         out_dir=str(best_dir),
+        image_dir=str(img_path),
         n_input_images=len(names),
         n_registered=len(registered),
         n_points3D=rec.num_points3D(),

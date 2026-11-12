@@ -23,12 +23,41 @@ def noise_texture(size: int, rng: np.random.Generator) -> np.ndarray:
     return (40 + 180 * tex).astype(np.uint8)
 
 
+PPM = 5000.0  # board rendering resolution, px per metre
+MARGIN = 0.02  # white margin around the tags, metres
+
+
+def render_board(t, ppm=PPM) -> np.ndarray:
+    """Kalibr-like board: tags rotated by t.tag_rotation_deg, y up, tag 0 bottom-left."""
+    w, h = t.extent_m
+    W, H = int((w + 2 * MARGIN) * ppm), int((h + 2 * MARGIN) * ppm)
+    canvas = np.full((H, W), 255, np.uint8)
+    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+    side = int(round(t.tag_size_m * ppm))
+    for tag in range(t.rows * t.cols):
+        r, c = divmod(tag, t.cols)
+        img = cv2.aruco.generateImageMarker(d, tag, side, borderBits=1)
+        img = np.rot90(img, k=t.tag_rotation_deg // 90)  # CCW, as seen with y up
+        x0 = MARGIN + c * t.pitch_m
+        y_top = MARGIN + r * t.pitch_m + t.tag_size_m  # board y of the tag's top edge
+        u, v = int(round(x0 * ppm)), int(round((h + 2 * MARGIN - y_top) * ppm))
+        canvas[v : v + side, u : u + side] = img
+    return canvas
+
+
+def canvas_to_board(t, ppm=PPM) -> np.ndarray:
+    """Homography canvas pixel -> board metres (x right, y up, origin at tag 0)."""
+    h = t.extent_m[1]
+    return np.array([[1 / ppm, 0, -MARGIN], [0, -1 / ppm, h + MARGIN], [0, 0, 1]], dtype=np.float64)
+
+
 @dataclass
 class Quad:
     origin: np.ndarray  # 3D corner
     u: np.ndarray  # 3D edge vector (texture x)
     v: np.ndarray  # 3D edge vector (texture y)
     texture: np.ndarray
+    two_sided: bool = False
 
     @property
     def normal(self) -> np.ndarray:
@@ -85,13 +114,46 @@ def render(quads: list[Quad], K: np.ndarray, R, t, size, ss: int = 2) -> np.ndar
     img = np.full((H * ss, W * ss), 128, np.uint8)
     cam_center = -R.T @ t
     for q in quads:
-        if np.dot(q.normal, cam_center - q.center) <= 0:
+        if not q.two_sided and np.dot(q.normal, cam_center - q.center) <= 0:
             continue  # back-facing
         th, tw = q.texture.shape
-        # texture pixel (x, y) -> 3D origin + u*x/tw + v*y/th -> image
-        Hq = K @ np.column_stack([R @ q.u / tw, R @ q.v / th, R @ q.origin + t])
+        # texture pixel center (x, y) -> 3D origin + u*(x+0.5)/tw + v*(y+0.5)/th
+        # (pixel edges, not centers, coincide with the quad's edges)
+        o3 = q.origin + 0.5 * q.u / tw + 0.5 * q.v / th
+        Hq = K @ np.column_stack([R @ q.u / tw, R @ q.v / th, R @ o3 + t])
         Hq = T @ S @ Hq
         warped = cv2.warpPerspective(q.texture, Hq, (W * ss, H * ss), flags=cv2.INTER_LINEAR)
         mask = cv2.warpPerspective(np.full_like(q.texture, 255), Hq, (W * ss, H * ss))
         img[mask > 127] = warped[mask > 127]
     return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+
+
+def board_quad(t, ppm=4000.0) -> Quad:
+    """The AprilGrid as a quad in its own board frame (z = 0).
+
+    For exact geometry, tag size, pitch and MARGIN must be whole pixels at ``ppm``
+    (e.g. tag 40 mm, gap 10 mm at 4000 px/m).
+    """
+    canvas = render_board(t, ppm)
+    h = t.extent_m[1]
+    Hc, Wc = canvas.shape
+    origin = np.array([-MARGIN, h + MARGIN, 0.0])  # canvas pixel (0, 0)
+    return Quad(origin, np.array([Wc / ppm, 0, 0]), np.array([0, -Hc / ppm, 0]), canvas, True)
+
+
+def board_scene(t, cube_size=0.08, seed=0) -> list[Quad]:
+    """AprilGrid on the floor with a textured cube standing at its center."""
+    rng = np.random.default_rng(seed)
+    w, h = t.extent_m
+    c = np.array([w / 2, h / 2, 0])
+    a = cube_size
+    ex, ey, ez = np.eye(3)
+    o = c - np.array([a / 2, a / 2, 0])
+    faces = [
+        (o + a * ez, a * ex, a * ey),
+        (o, a * ez, a * ex),
+        (o + a * ey, a * ex, a * ez),
+        (o, a * ey, a * ez),
+        (o + a * ex, a * ez, a * ey),
+    ]
+    return [board_quad(t)] + [Quad(org, u, v, noise_texture(512, rng)) for org, u, v in faces]
