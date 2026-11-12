@@ -6,8 +6,9 @@ cols: 6
 tag_family: 36h11
 tag_size_m: 0.04313        # black square edge, user measurement
 tag_spacing_ratio: 0.391   # gap / tag_size, user measurement (Kalibr default is 0.3)
-id_origin: bottom_left     # Kalibr convention as believed; CHECK on an image
-id_origin_verified: false
+id_origin: bottom_left     # verified 2026-11-12 on xperia1m3_aprilgrid_eis.mp4 (frame 368)
+id_origin_verified: true
+tag_rotation_deg: 180      # OpenCV corners 0..3 = board BR, BL, TL, TR (verified)
 material: acrylic (printed in Taiwan)
 thermal_expansion_per_K: 7.0e-5
 dimensions_certified: false

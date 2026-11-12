@@ -40,3 +40,5 @@ select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
+markers = ["slow: end-to-end tests taking more than a few seconds (deselect with -m 'not slow')"]

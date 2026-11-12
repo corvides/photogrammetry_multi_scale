@@ -46,9 +46,14 @@ reports) for medical phantoms. Full background and decisions are in
 - Available target: Kalibr AprilGrid on acrylic.
   - 6×6 tags, family 36h11, tagSize 0.04313 m, tagSpacing 0.391 (ratio).
     Values from user measurements; the original YAML is unavailable.
-  - Tag ID ordering / origin corner **not yet verified** against an image.
-    Kalibr numbers tags row-wise; confirm the starting corner before
-    trusting the 3D points.
+  - **Verified** (2026-11-12, video frame 368): tag 0 at the board's
+    bottom-left (printed caption at bottom), ids row-wise left→right, rows
+    going up. Board frame: x right, y up, origin = outer bottom-left corner of
+    tag 0.
+  - OpenCV corner order for these tags (tags are printed 180° from OpenCV's
+    canonical orientation): corners[0..3] = board BR, BL, TL, TR of each tag.
+    Homography check: 1.4 px RMS (uncorrected distortion) vs 65–94 px for
+    other orders. Detection is strong (up to 35/36 tags at 1080p).
   - Detect with OpenCV `DICT_APRILTAG_36h11`.
 - Planned targets: ChArUco (A4, certified) for the camera; small matte
   ChArUco for the stereo endoscope.
@@ -56,11 +61,27 @@ reports) for medical phantoms. Full background and decisions are in
 ## Repo conventions
 
 - Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
-  (argparse, `cli.py`). Existing: `check-config`. Planned: `calibrate`,
-  `sfm`, `markers`, `dense`, `evaluate`, `register`.
+  (argparse, `cli.py`). Existing: `check-config`, `calibrate`,
+  `extract-frames`, `sfm`. Planned: `markers`, `dense`, `evaluate`, `register`.
 - `config.py`: strict frozen dataclasses loaded from YAML (`kind:
   device|target|preset`; targets also need `type: aprilgrid|charuco`).
   Unknown keys are errors. Add new config fields there and in the shipped YAML.
+- Calibration modules: `targets.py` (detectors -> board/image points),
+  `sources.py` (video/images/RAW), `calibration.py` (scan, quality filter,
+  farthest-point pose selection, holdout, outlier rounds), `calibration_io.py`
+  (calibration.yaml, Kalibr camchain, report.json), `plots.py`. COLMAP export
+  adds +0.5 px to the principal point.
+- SfM: `sfm.py` on pycolmap 4.2 (API changes between versions: introspect
+  before using new calls). Intrinsics from calibration.yaml are fixed by
+  default (`--refine-intrinsics` to refine); the principal point is never
+  refined. Images are downscaled by the preset and intrinsics scaled
+  accordingly; `extraction.max_image_size` is set so COLMAP never downscales
+  silently. `geometry.umeyama` = similarity alignment (reuse it for markers).
+- Tests: `tests/synthetic_scene.py` renders textured quads (cube on a floor)
+  from known cameras. Slow tests are marked `@pytest.mark.slow`
+  (`-m "not slow"` to skip).
+- Synthetic tests must supersample when rendering (plain perspective warps
+  alias the edges: 0.4 px error instead of 0.2 px).
 - Config files: `configs/devices/`, `configs/targets/`, `configs/presets/`.
 - Base deps stay light; stage-specific heavy deps go in extras (`sfm`, `eval`).
 - No `.python-version` pin (3.10 and 3.12 machines share `uv.lock`).
@@ -71,3 +92,4 @@ reports) for medical phantoms. Full background and decisions are in
 - Data and outputs are outside git (`data/`, `runs/` in `.gitignore`).
 - Tests with pytest on synthetic data (render or project known geometry), so
   they run without a camera.
+- in the recap, be sure to clearly state the study is in relation to MIS and RAS.

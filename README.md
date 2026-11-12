@@ -1,5 +1,9 @@
 # Metric photogrammetry for medical phantoms
 
+**Context: this study is carried out in relation to minimally invasive surgery
+(MIS) and robot-assisted surgery (RAS)**, e.g. laparoscopic TAPP hernia repair
+and, longer term, microsurgery on nerves.
+
 Goal: reconstruct real objects (simple shapes first, surgical phantoms later) as
 **metric 3D meshes placed in a defined reference frame**, and **quantify the
 error** in shape, scale and placement. The output serves as a ground truth
@@ -152,6 +156,13 @@ and `CMAKE_CUDA_ARCHITECTURES=120`, ideally in a Dockerfile.
 
 ### Current camera: Canon R6 + RF 35mm f/1.8 Macro IS STM
 
+> **Temporary equipment.** The R6 is personal equipment, used **temporarily
+> for validation** only. It will be replaced either by equivalent equipment
+> purchased by our unit, or by a camera provided by the hospital we are
+> likely to cooperate with (in addition to the endoscope). This is one reason
+> the pipeline is device-agnostic: changing camera means adding a device
+> config and recalibrating, with no code change.
+
 - 20 MP full frame, 6.56 µm pixels, maximum magnification 0.5×.
 - Work at **25–40 cm, f/8** → GSD ≈ 50–70 µm → target surface accuracy
   ≈ 0.05–0.1 mm.
@@ -223,12 +234,16 @@ Phase-1 reference objects:
 
 0. **Repo + environment** (uv, Python ≥3.10), config schema for devices,
    targets and presets.
-1. **Calibration** (`calibrate`): AprilGrid now, ChArUco later.
+1. **Calibration** (`calibrate`) ✅: AprilGrid now, ChArUco later.
    - RAW → linear TIFF.
    - Export to COLMAP / Kalibr formats.
    - Report: reprojection error, coverage heatmap, parameter uncertainty.
-2. **SfM** (`sfm`) with known intrinsics; marker detection and frame alignment
-   (`markers`).
+2. **SfM** (`sfm`) with known intrinsics ✅. Next: marker detection and
+   frame alignment (`markers`).
+   - Synthetic check: cameras around a textured 10 cm cube recovered to
+     ≤ 69 µm (mean 34 µm) at a 0.45 m radius.
+   - Video smoke test: 120/120 frames registered, 0.85 px mean reprojection
+     error (EIS video).
 3. **Dense** (`dense`) with OpenMVS: CPU and GPU presets.
 4. **Evaluation** (`evaluate`) on simple shapes.
 5. Phantom (TAPP), coating and lighting study.
@@ -255,6 +270,17 @@ uv sync                          # base deps (+ dev group: pytest, ruff)
 uv sync --extra sfm --extra eval # later stages: pycolmap, open3d, trimesh
 uv run metrogram check-config configs/*/*.yaml
 PYTHONPATH= uv run pytest -q
+
+# calibration (video, image dir or RAW dir); outputs in runs/calib/<name>/
+uv run metrogram calibrate data/raw/xperia1m3_aprilgrid_eis.mp4 \
+    -t configs/targets/aprilgrid_6x6_acrylic.yaml \
+    -d configs/devices/xperia_1_iii_main.yaml --focus-note "AF, EIS on" --save-frames
+
+# frames from a video, then sparse reconstruction (arbitrary scale/frame)
+uv run metrogram extract-frames data/raw/xperia1m3_aprilgrid_eis.mp4 -n 120
+uv run metrogram sfm data/frames/xperia1m3_aprilgrid_eis \
+    -c runs/calib/xperia1m3_aprilgrid_eis_opencv/calibration.yaml \
+    -p configs/presets/cpu-fast.yaml --matcher sequential
 uv run ruff check . && uv run ruff format .
 ```
 

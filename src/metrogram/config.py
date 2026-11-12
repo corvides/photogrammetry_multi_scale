@@ -60,6 +60,9 @@ class AprilGridTarget:
     # Corner of the board where tag id 0 sits; must be checked on a real image.
     id_origin: str = "bottom_left"
     id_origin_verified: bool = False
+    # Rotation (CCW, multiple of 90°) of the printed tags w.r.t. OpenCV's canonical
+    # orientation, in the board's y-up frame. Kalibr boards: 180 (verified on ours).
+    tag_rotation_deg: int = 180
     material: str = ""
     thermal_expansion_per_K: float | None = None
     dimensions_certified: bool = False
@@ -72,6 +75,8 @@ class AprilGridTarget:
             raise ValueError("tag_size_m must be > 0 and tag_spacing_ratio >= 0")
         if self.tag_family not in APRILTAG_FAMILIES:
             raise ValueError(f"tag_family must be one of {sorted(APRILTAG_FAMILIES)}")
+        if self.tag_rotation_deg % 90:
+            raise ValueError("tag_rotation_deg must be a multiple of 90")
         if self.id_origin not in {"bottom_left", "top_left"}:
             raise ValueError("id_origin must be 'bottom_left' or 'top_left'")
 
