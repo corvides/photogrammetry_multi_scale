@@ -19,6 +19,10 @@ def _r(x, n=6):
     return float(round(float(x), n))
 
 
+def _round_stats(d: dict) -> dict:
+    return {k: _r(v, 4) if isinstance(v, float) else v for k, v in d.items()}
+
+
 def calibration_dict(res: CalibrationResult, meta: dict) -> dict:
     w, h = res.image_size
     return {
@@ -55,7 +59,11 @@ def calibration_dict(res: CalibrationResult, meta: dict) -> dict:
             "n_rejected_views": sum(v.status == "rejected" for v in res.views),
             "n_train_points": int(len(res.residuals["train"])),
             "coverage_fraction": _r(res.coverage["occupied_fraction"], 3),
+            # robust statistics: see calibration.error_stats
+            "train": _round_stats(res.stats.get("train", {})),
+            "holdout": _round_stats(res.stats.get("holdout", {})),
         },
+        "blur_filter": _round_stats(res.blur),
         "warnings": res.warnings,
     }
 
@@ -91,6 +99,10 @@ def view_report(res: CalibrationResult, s: CalibrationSettings) -> dict:
                 "status": v.status,
                 "reason": v.reason,
                 "n_points": v.n_points,
+                "n_blurred": v.n_blurred,
+                "edge_px_median": None
+                if v.edge_px is None or not len(v.edge_px)
+                else round(float(np.median(v.edge_px)), 2),
                 "sharpness": round(v.sharpness, 1),
                 "rms_px": None if v.rms_px is None else round(v.rms_px, 4),
             }
@@ -155,5 +167,21 @@ def summary(res: CalibrationResult) -> str:
         + f" ({e['n_holdout_views']} views), rejected {e['n_rejected_views']}",
         f"  coverage {e['coverage_fraction']:.0%}",
     ]
+    for name in ("train", "holdout"):
+        st = e[name]
+        if st:
+            core = "n/a" if st["core_rms_px"] is None else f"{st['core_rms_px']:.3f}"
+            lines.append(
+                f"  {name:7s} robust: core RMS {core} px ({st['n_views'] - st['n_outlier_views']}"
+                f"/{st['n_views']} views <= {st['core_threshold_px']:.2f} px), view RMS median "
+                f"{st['view_rms_median_px']:.3f} / p90 {st['view_rms_p90_px']:.3f}, point error "
+                f"median {st['point_err_median_px']:.3f} / p95 {st['point_err_p95_px']:.3f} px"
+            )
+    b = i["blur_filter"]
+    if b.get("enabled"):
+        lines.append(
+            f"  blur filter: {b['n_points_dropped']} points dropped ({b['fraction_dropped']:.1%}), "
+            f"edge width median {b['median_edge_px']:.2f} px, threshold {b['threshold_px']:.2f} px"
+        )
     lines += [f"  WARNING: {w}" for w in res.warnings]
     return "\n".join(lines)

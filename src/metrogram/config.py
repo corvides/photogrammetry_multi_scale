@@ -63,6 +63,9 @@ class AprilGridTarget:
     # Rotation (CCW, multiple of 90°) of the printed tags w.r.t. OpenCV's canonical
     # orientation, in the board's y-up frame. Kalibr boards: 180 (verified on ours).
     tag_rotation_deg: int = 180
+    # Black border width of each tag, in bits. Kalibr boards: 2 (10x10-bit tags for
+    # 36h11); OpenCV's own markers: 1. A wrong value fails or shifts detections.
+    border_bits: int = 2
     material: str = ""
     thermal_expansion_per_K: float | None = None
     dimensions_certified: bool = False
@@ -77,6 +80,8 @@ class AprilGridTarget:
             raise ValueError(f"tag_family must be one of {sorted(APRILTAG_FAMILIES)}")
         if self.tag_rotation_deg % 90:
             raise ValueError("tag_rotation_deg must be a multiple of 90")
+        if self.border_bits < 1:
+            raise ValueError("border_bits must be >= 1")
         if self.id_origin not in {"bottom_left", "top_left"}:
             raise ValueError("id_origin must be 'bottom_left' or 'top_left'")
 

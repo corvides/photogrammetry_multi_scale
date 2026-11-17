@@ -28,7 +28,9 @@ MARGIN = 0.02  # white margin around the tags, metres
 
 
 def render_board(t, ppm=PPM) -> np.ndarray:
-    """Kalibr-like board: tags rotated by t.tag_rotation_deg, y up, tag 0 bottom-left."""
+    """Kalibr-like board: tags rotated by t.tag_rotation_deg, y up, tag 0 bottom-left,
+    t.border_bits black border, and Kalibr's gap-sized black squares at every grid
+    intersection (they touch the tag corners)."""
     w, h = t.extent_m
     W, H = int((w + 2 * MARGIN) * ppm), int((h + 2 * MARGIN) * ppm)
     canvas = np.full((H, W), 255, np.uint8)
@@ -36,12 +38,20 @@ def render_board(t, ppm=PPM) -> np.ndarray:
     side = int(round(t.tag_size_m * ppm))
     for tag in range(t.rows * t.cols):
         r, c = divmod(tag, t.cols)
-        img = cv2.aruco.generateImageMarker(d, tag, side, borderBits=1)
+        img = cv2.aruco.generateImageMarker(d, tag, side, borderBits=t.border_bits)
         img = np.rot90(img, k=t.tag_rotation_deg // 90)  # CCW, as seen with y up
         x0 = MARGIN + c * t.pitch_m
         y_top = MARGIN + r * t.pitch_m + t.tag_size_m  # board y of the tag's top edge
         u, v = int(round(x0 * ppm)), int(round((h + 2 * MARGIN - y_top) * ppm))
         canvas[v : v + side, u : u + side] = img
+    g = int(round(t.gap_m * ppm))
+    if g:
+        for c in range(t.cols + 1):
+            for r in range(t.rows + 1):
+                # square spanning board x in [c*pitch - gap, c*pitch], same in y
+                u = int(round((MARGIN + c * t.pitch_m - t.gap_m) * ppm))
+                v = int(round((h + MARGIN - r * t.pitch_m) * ppm))
+                canvas[max(v, 0) : v + g, max(u, 0) : u + g] = 0
     return canvas
 
 

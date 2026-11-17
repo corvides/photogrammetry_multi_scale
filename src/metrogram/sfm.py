@@ -21,7 +21,7 @@ import numpy as np
 import yaml
 
 from metrogram.config import Device, Preset
-from metrogram.sources import IMAGE_EXT, RAW_EXT, read_gray
+from metrogram.sources import IMREAD_COLOR, RAW_EXT, decode_raw, list_images, read_gray
 
 # Cameras supported by our calibration / this stage (COLMAP names).
 _PARAM_COUNT = {"PINHOLE": 4, "SIMPLE_RADIAL": 4, "RADIAL": 5, "OPENCV": 8, "FULL_OPENCV": 12}
@@ -119,7 +119,7 @@ def settings_from_preset(p: Preset, refine_intrinsics: bool) -> SfmSettings:
 
 
 def _list_images(image_dir: Path) -> list[Path]:
-    files = sorted(f for f in image_dir.iterdir() if f.suffix.lower() in IMAGE_EXT)
+    files = list_images(image_dir)
     if not files:
         raise ValueError(f"no images in {image_dir}")
     return files
@@ -129,7 +129,7 @@ def _image_size(path: Path) -> tuple[int, int]:
     if path.suffix.lower() in RAW_EXT:
         h, w = read_gray(path).shape
         return w, h
-    img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED | cv2.IMREAD_IGNORE_ORIENTATION)
     if img is None:
         raise OSError(f"cannot read {path}")
     return img.shape[1], img.shape[0]
@@ -150,14 +150,9 @@ def prepare_images(image_dir: Path, work: Path, max_size: int | None, log) -> tu
         print(f"  preparing {len(files)} images -> {nw}x{nh} in {out}", file=log)
     for f in files:
         if f.suffix.lower() in RAW_EXT:
-            import rawpy
-
-            with rawpy.imread(str(f)) as r:
-                img = cv2.cvtColor(
-                    r.postprocess(use_camera_wb=True, no_auto_bright=True), cv2.COLOR_RGB2BGR
-                )
+            img = cv2.cvtColor(decode_raw(f), cv2.COLOR_RGB2BGR)
         else:
-            img = cv2.imread(str(f), cv2.IMREAD_COLOR)
+            img = cv2.imread(str(f), IMREAD_COLOR)
         if img.shape[1] != w or img.shape[0] != h:
             raise ValueError(f"{f.name}: size {img.shape[1]}x{img.shape[0]} != {w}x{h}")
         if scale != 1.0:
@@ -263,7 +258,7 @@ def run(
     best_dir = sparse / str(best_idx)
     rec.export_PLY(str(out / "sparse_points.ply"))
 
-    names = sorted(f.name for f in img_path.iterdir() if f.suffix.lower() in IMAGE_EXT)
+    names = [f.name for f in list_images(img_path)]
     registered = {rec.image(i).name for i in rec.reg_image_ids()}
     unregistered = [n for n in names if n not in registered]
     cam_final = _camera_dict(next(iter(rec.cameras.values())))

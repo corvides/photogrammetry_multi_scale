@@ -52,9 +52,11 @@ class View:
     point_ids: np.ndarray
     sharpness: float
     features: np.ndarray  # pose-diversity descriptor
+    edge_px: np.ndarray | None = None  # per-point edge width (blur), if the detector gives it
     status: str = "detected"  # detected | low_quality | unselected | train | holdout | rejected
     reason: str = ""
     rms_px: float | None = None
+    n_blurred: int = 0  # points dropped by the blur filter
 
     @property
     def n_points(self) -> int:
@@ -70,6 +72,10 @@ class CalibrationSettings:
     max_views: int = 60
     holdout_frac: float = 0.2
     reject_factor: float = 3.0  # reject views with rms > factor * median rms
+    # Blur filter (per tag): drop points whose edge width exceeds
+    # max(blur_floor_px, blur_rel x median edge width of the whole scan). 0 = off.
+    blur_rel: float = 2.0
+    blur_floor_px: float = 3.0
     max_reject_rounds: int = 5
     seed: int = 0
 
@@ -86,6 +92,9 @@ class CalibrationResult:
     views: list[View]
     n_scanned: int
     coverage: dict
+    # robust statistics per status ("train", "holdout"); see error_stats()
+    stats: dict = field(default_factory=dict)
+    blur: dict = field(default_factory=dict)
     residuals: dict[str, np.ndarray] = field(
         default_factory=dict
     )  # per status: (N, 4) x, y, dx, dy
@@ -176,6 +185,7 @@ def scan(source: Source, detector: BoardDetector, s: CalibrationSettings, log=sy
                 det.point_ids,
                 _sharpness(fr.gray, det.img),
                 _pose_features(det.obj, det.img, extent, size),
+                det.edge_px,
             )
         )
     if size is None:
@@ -184,6 +194,39 @@ def scan(source: Source, detector: BoardDetector, s: CalibrationSettings, log=sy
 
 
 # ------------------------------------------------------------------------ selection
+
+
+def filter_blur(views: list[View], s: CalibrationSettings) -> dict:
+    """Drop points of blurred tags (in place). Partial defocus of a tilted board is
+    invisible to the per-view sharpness score but biases corners by pixels."""
+    widths = [v.edge_px for v in views if v.edge_px is not None and len(v.edge_px)]
+    if not s.blur_rel or not widths:
+        return {"enabled": False}
+    med = float(np.median(np.concatenate(widths)))
+    thr = max(s.blur_floor_px, s.blur_rel * med)
+    n_drop = 0
+    for v in views:
+        if v.edge_px is None:
+            continue
+        keep = v.edge_px <= thr
+        v.n_blurred = int((~keep).sum())
+        n_drop += v.n_blurred
+        if v.n_blurred:
+            v.obj, v.img, v.point_ids, v.edge_px = (
+                v.obj[keep],
+                v.img[keep],
+                v.point_ids[keep],
+                v.edge_px[keep],
+            )
+    n_all = sum(len(w) for w in widths)
+    return {
+        "enabled": True,
+        "median_edge_px": med,
+        "threshold_px": thr,
+        "n_points_dropped": n_drop,
+        "fraction_dropped": n_drop / n_all,
+        "n_views_affected": sum(v.n_blurred > 0 for v in views),
+    }
 
 
 def select(views: list[View], s: CalibrationSettings) -> None:
@@ -242,6 +285,37 @@ def _coverage(points: np.ndarray, size, grid=(8, 6)) -> dict:
     }
 
 
+def error_stats(views: list[View], res: list[np.ndarray], core_px: float) -> dict:
+    """Robust error statistics of a set of views (residual arrays aligned with views).
+
+    RMS squares errors, so a few bad views dominate it. Also reported: the
+    per-view RMS distribution (median, p90), the per-point error distribution
+    (median, p95), and the "core" RMS over views whose RMS is <= core_px (the
+    same outlier rule as in training, so core RMS is comparable to train RMS).
+    """
+    if not views:
+        return {}
+    vr = np.array([v.rms_px for v in views])
+    e = np.concatenate([np.hypot(r[:, 2], r[:, 3]) for r in res])
+    core = vr <= core_px
+    ec = np.concatenate(
+        [np.hypot(r[:, 2], r[:, 3]) for r, c in zip(res, core, strict=True) if c] or [np.zeros(0)]
+    )
+    return {
+        "n_views": int(len(vr)),
+        "n_points": int(len(e)),
+        "rms_px": float(np.sqrt((e**2).mean())),
+        "view_rms_median_px": float(np.median(vr)),
+        "view_rms_p90_px": float(np.percentile(vr, 90)),
+        "point_err_median_px": float(np.median(e)),
+        "point_err_p95_px": float(np.percentile(e, 95)),
+        "core_threshold_px": float(core_px),
+        "n_outlier_views": int((~core).sum()),
+        "outlier_views": [v.key for v, c in zip(views, core, strict=True) if not c],
+        "core_rms_px": float(np.sqrt((ec**2).mean())) if len(ec) else None,
+    }
+
+
 def calibrate(views: list[View], size, s: CalibrationSettings, n_scanned: int, log=sys.stderr):
     if s.model not in MODELS:
         raise ValueError(f"model must be one of {sorted(MODELS)}")
@@ -280,16 +354,17 @@ def calibrate(views: list[View], size, s: CalibrationSettings, n_scanned: int, l
         for v in sorted(bad, key=lambda v: -v.rms_px)[: max(1, len(train) // 10)]:
             v.status, v.reason = "rejected", f"rms {v.rms_px:.3f} px > {thresh:.3f} px"
 
-    res_train = np.vstack(
-        [_residuals(v, K, dist, r, t) for v, r, t in zip(train, rvecs, tvecs, strict=True)]
-    )
+    per_train = [_residuals(v, K, dist, r, t) for v, r, t in zip(train, rvecs, tvecs, strict=True)]
+    res_train = np.vstack(per_train)
     residuals = {"train": res_train}
+    core_px = s.reject_factor * float(np.median([v.rms_px for v in train]))
+    stats = {"train": error_stats(train, per_train, core_px)}
     train_rms = float(np.sqrt((res_train[:, 2:] ** 2).sum(1).mean()))
 
     holdout = [v for v in views if v.status == "holdout"]
     holdout_rms = None
     if holdout:
-        res = []
+        res, done = [], []
         for v in holdout:
             ok, rvec, tvec = cv2.solvePnP(v.obj, v.img, K, dist, flags=cv2.SOLVEPNP_IPPE)
             if not ok:
@@ -299,8 +374,10 @@ def calibrate(views: list[View], size, s: CalibrationSettings, n_scanned: int, l
             r = _residuals(v, K, dist, rvec, tvec)
             v.rms_px = float(np.sqrt((r[:, 2:] ** 2).sum(1).mean()))
             res.append(r)
+            done.append(v)
         if res:
             residuals["holdout"] = np.vstack(res)
+            stats["holdout"] = error_stats(done, res, core_px)
             holdout_rms = float(np.sqrt((residuals["holdout"][:, 2:] ** 2).sum(1).mean()))
     else:
         warnings.append("no holdout views (fewer than 10 selected): no independent error")
@@ -317,11 +394,25 @@ def calibrate(views: list[View], size, s: CalibrationSettings, n_scanned: int, l
         )
     if min(coverage["corner_cells_points"]) == 0:
         warnings.append("at least one image corner cell has no points")
-    if holdout_rms is not None and holdout_rms > 1.5 * train_rms:
-        warnings.append(
-            f"holdout RMS {holdout_rms:.3f} px >> train RMS {train_rms:.3f} px: "
-            "overfitting or unstable intrinsics (autofocus, stabilization?)"
-        )
+    hs = stats.get("holdout")
+    if hs:
+        # Generalization is judged on robust numbers: the core RMS (outlier views
+        # excluded, same rule as training) and the median view.
+        core = hs["core_rms_px"]
+        if (core is not None and core > 1.5 * train_rms) or (
+            hs["view_rms_median_px"] > 1.5 * stats["train"]["view_rms_median_px"]
+        ):
+            warnings.append(
+                f"holdout core RMS {core:.3f} px / median view {hs['view_rms_median_px']:.3f} px "
+                f">> train RMS {train_rms:.3f} px: overfitting or unstable intrinsics "
+                "(focus moved, autofocus, stabilization?)"
+            )
+        if hs["n_outlier_views"]:
+            warnings.append(
+                f"{hs['n_outlier_views']}/{hs['n_views']} holdout views above "
+                f"{core_px:.2f} px (bad views: blur, defocus, detection errors; "
+                f"excluded from the core RMS): {', '.join(hs['outlier_views'])}"
+            )
     n_rej = sum(v.status == "rejected" for v in views)
     if n_rej > 0.2 * (len(train) + n_rej):
         warnings.append(f"{n_rej} views rejected as outliers: inconsistent intrinsics?")
@@ -337,6 +428,7 @@ def calibrate(views: list[View], size, s: CalibrationSettings, n_scanned: int, l
         views=views,
         n_scanned=n_scanned,
         coverage=coverage,
+        stats=stats,
         residuals=residuals,
         warnings=warnings,
     )
@@ -348,5 +440,15 @@ def run(source: Source, detector: BoardDetector, s: CalibrationSettings, log=sys
     views, size, n = scan(source, detector, s, log)
     if log:
         print(f"  {len(views)}/{n} frames with detections, image size {size}", file=log)
+    blur = filter_blur(views, s)
+    if log and blur.get("enabled"):
+        print(
+            f"  blur filter: median edge width {blur['median_edge_px']:.2f} px, dropped "
+            f"{blur['n_points_dropped']} points ({blur['fraction_dropped']:.1%}) above "
+            f"{blur['threshold_px']:.2f} px in {blur['n_views_affected']} views",
+            file=log,
+        )
     select(views, s)
-    return calibrate(views, size, s, n, log)
+    res = calibrate(views, size, s, n, log)
+    res.blur = blur
+    return res

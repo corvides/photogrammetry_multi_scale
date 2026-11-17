@@ -2,7 +2,12 @@
 
 Frames are yielded as 8-bit grayscale. RAW files are decoded with LibRaw (rawpy)
 WITHOUT any lens correction (LibRaw applies none), so the calibration models
-the real lens distortion.
+the real lens distortion. Images are always in SENSOR orientation (EXIF/RAW
+rotation flags ignored: intrinsics are per sensor, not per display), and RAW
+frames are cropped to the maker's default area (e.g. Canon R6: 5472x3648).
+
+A directory holding RAW files plus other images (e.g. CR3 + preview JPG pairs)
+is read as RAW only: in-camera JPEGs are resized and lens-corrected.
 """
 
 from __future__ import annotations
@@ -26,16 +31,41 @@ class Frame:
     gray: np.ndarray
 
 
+def list_images(directory: str | Path) -> list[Path]:
+    """Sorted image files of a directory; RAW only if any RAW is present."""
+    files = sorted(f for f in Path(directory).iterdir() if f.suffix.lower() in IMAGE_EXT)
+    raw = [f for f in files if f.suffix.lower() in RAW_EXT]
+    return raw if raw else files
+
+
+def decode_raw(path: str | Path, output_bps: int = 8) -> np.ndarray:
+    """RGB, no lens correction, sensor orientation, maker default crop."""
+    import rawpy  # local import: only needed for RAW
+
+    with rawpy.imread(str(path)) as raw:
+        rgb = raw.postprocess(
+            use_camera_wb=True, no_auto_bright=True, output_bps=output_bps, user_flip=0
+        )
+        s = raw.sizes
+    # LibRaw's output starts at (left_margin, top_margin) of the raw frame; the
+    # maker crop (crop_*) is given in raw coordinates.
+    x0, y0 = s.crop_left_margin - s.left_margin, s.crop_top_margin - s.top_margin
+    cw, ch = s.crop_width, s.crop_height
+    if cw and ch and x0 >= 0 and y0 >= 0 and x0 + cw <= rgb.shape[1] and y0 + ch <= rgb.shape[0]:
+        rgb = rgb[y0 : y0 + ch, x0 : x0 + cw]
+    return np.ascontiguousarray(rgb)
+
+
+IMREAD_GRAY = cv2.IMREAD_GRAYSCALE | cv2.IMREAD_IGNORE_ORIENTATION
+IMREAD_COLOR = cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
+
+
 def read_gray(path: str | Path) -> np.ndarray:
     path = Path(path)
     if path.suffix.lower() in RAW_EXT:
-        import rawpy  # local import: only needed for RAW
-
-        with rawpy.imread(str(path)) as raw:
-            rgb = raw.postprocess(use_camera_wb=True, no_auto_bright=True, output_bps=16)
-        gray16 = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        gray16 = cv2.cvtColor(decode_raw(path, 16), cv2.COLOR_RGB2GRAY)
         return (gray16 / 257.0).round().astype(np.uint8)
-    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread(str(path), IMREAD_GRAY)
     if img is None:
         raise OSError(f"cannot read image {path}")
     return img
@@ -48,7 +78,7 @@ class Source:
         if isinstance(spec, (str, Path)):
             p = Path(spec)
             if p.is_dir():
-                self.files = sorted(f for f in p.iterdir() if f.suffix.lower() in IMAGE_EXT)
+                self.files = list_images(p)
                 self.video = None
             elif p.suffix.lower() in VIDEO_EXT:
                 self.files, self.video = [], p

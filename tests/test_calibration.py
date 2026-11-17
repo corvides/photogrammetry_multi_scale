@@ -90,3 +90,45 @@ def test_synthetic_calibration(target, tmp_path):
     calibration_io.write(res, s, out, {"source": "synthetic"})
     for f in ("calibration.yaml", "camchain_kalibr.yaml", "report.json", "coverage.png"):
         assert (out / f).exists()
+    st = res.stats["holdout"]
+    assert st["n_outlier_views"] == 0 and st["core_rms_px"] == pytest.approx(res.holdout_rms_px)
+    assert res.blur["enabled"] and res.blur["median_edge_px"] < 3.0
+
+
+def test_edge_width_measures_blur(target):
+    det = AprilGridDetector(target)
+    img = synth_views(target, n=1, seed=3)[0]
+    sharp = det.detect(img)
+    blurred = det.detect(cv2.GaussianBlur(img, (0, 0), 3.0))
+    assert sharp is not None and blurred is not None
+    assert np.median(blurred.edge_px) > 2 * np.median(sharp.edge_px)
+
+
+def _view(key, edge):
+    n = len(edge)
+    z = np.zeros((n, 3), np.float32)
+    return calibration.View(
+        key, 0, z, z[:, :2].copy(), np.arange(n), 1.0, np.zeros(5), np.array(edge)
+    )
+
+
+def test_blur_filter_drops_blurred_tags():
+    views = [_view("a", [1.5] * 8), _view("b", [1.6] * 4 + [6.0] * 4), _view("c", [1.4] * 8)]
+    info = calibration.filter_blur(views, calibration.CalibrationSettings())
+    assert info["threshold_px"] == pytest.approx(3.0)  # floor > 2 x median (1.5)
+    assert [v.n_points for v in views] == [8, 4, 8] and views[1].n_blurred == 4
+    off = calibration.filter_blur(views, calibration.CalibrationSettings(blur_rel=0))
+    assert off == {"enabled": False}
+
+
+def test_error_stats_isolate_outlier_view():
+    views = [_view(k, [1.0] * 4) for k in "abcd"]
+    res = []
+    for v, e in zip(views, [0.5, 0.6, 0.5, 8.0], strict=True):
+        v.rms_px = e
+        res.append(np.column_stack([np.zeros((4, 2)), np.full(4, e), np.zeros(4)]))
+    st = calibration.error_stats(views, res, core_px=1.8)
+    assert st["outlier_views"] == ["d"]
+    assert st["core_rms_px"] == pytest.approx(np.sqrt((0.25 + 0.36 + 0.25) / 3))
+    assert st["rms_px"] > 3.5  # plain RMS dominated by the one bad view
+    assert st["view_rms_median_px"] == pytest.approx(0.55)

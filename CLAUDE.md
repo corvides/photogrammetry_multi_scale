@@ -49,16 +49,28 @@ reports) for medical phantoms. Full background and decisions are in
   - IS and IBIS off.
 - Comparison camera: Sony Xperia 1 III (12 MP).
 - Available target: Kalibr AprilGrid on acrylic.
-  - 6×6 tags, family 36h11, tagSize 0.04313 m, tagSpacing 0.391 (ratio).
-    Values from user measurements; the original YAML is unavailable.
+  - 6×6 tags, family 36h11, **tag 50.0 mm, gap 10.0 mm (ratio 0.2, pitch
+    60 mm)**: printed caption "5.0cm and spacing=1.0cm", confirmed 2026-11-17
+    by a calibration sweep on R6 data (±0.5 mm is already 6× worse). The older
+    43.13 mm / 0.391 values were an artefact of the wrong tag border. Absolute
+    scale still needs a caliper check.
+  - **Kalibr tags have a 2-bit black border** (10×10 bits): OpenCV needs
+    `markerBorderBits=2` (`border_bits` in the target YAML). With 1 bit,
+    detection fails on sharp close-ups and lands on the wrong edge at low res.
+  - Close-range full-frame shots: tags are hundreds of px wide, so OpenCV
+    detection runs on a copy downscaled to ≤ 2000 px; corners are then
+    refined at full resolution (edge-line fit on the middle 60 % of each tag
+    side, line intersection, small cornerSubPix on the X-junction). Each
+    corner touches a Kalibr corner square, which drags coarse vertices on
+    oblique views, so large-window cornerSubPix alone fails.
   - **Verified** (2026-11-12, video frame 368): tag 0 at the board's
     bottom-left (printed caption at bottom), ids row-wise left→right, rows
     going up. Board frame: x right, y up, origin = outer bottom-left corner of
     tag 0.
   - OpenCV corner order for these tags (tags are printed 180° from OpenCV's
     canonical orientation): corners[0..3] = board BR, BL, TL, TR of each tag.
-    Homography check: 1.4 px RMS (uncorrected distortion) vs 65–94 px for
-    other orders. Detection is strong (up to 35/36 tags at 1080p).
+    (Still valid with the 2-bit border: R6 detections, 2026-11-17. The 1.4 px
+    homography check of 2026-11-12 used the 1-bit border and old dimensions.)
   - Detect with OpenCV `DICT_APRILTAG_36h11`.
 - Planned targets: ChArUco (A4, certified) for the camera; small matte
   ChArUco for the stereo endoscope.
@@ -73,9 +85,17 @@ reports) for medical phantoms. Full background and decisions are in
   device|target|preset`; targets also need `type: aprilgrid|charuco`).
   Unknown keys are errors. Add new config fields there and in the shipped YAML.
 - Calibration modules: `targets.py` (detectors -> board/image points),
-  `sources.py` (video/images/RAW), `calibration.py` (scan, quality filter,
-  farthest-point pose selection, holdout, outlier rounds), `calibration_io.py`
-  (calibration.yaml, Kalibr camchain, report.json), `plots.py`. COLMAP export
+  `sources.py` (video/images/RAW; a folder with RAW + JPG pairs is read as RAW
+  only; images in sensor orientation, EXIF/RAW rotation ignored; RAW cropped
+  to the maker area, e.g. R6 5472×3648, via `decode_raw`, used by sfm too),
+  `calibration.py` (scan, per-tag blur filter on the detector's edge width,
+  quality filter, farthest-point pose selection, holdout, outlier rounds), `calibration_io.py`
+  (calibration.yaml, Kalibr camchain, report.json), `plots.py`. Judge holdout
+  views by the robust stats (`error_stats`: core RMS without outlier views,
+  median view, p95), not the plain RMS, which a few bad views dominate.
+  Plots (`plots.py`): status by marker **shape** (dot train, x holdout,
+  triangle rejected), colour only repeats it. README §7 embeds copies of the
+  R6 20 cm plots from `docs/img/calibration/` (runs/ is not in git). COLMAP export
   adds +0.5 px to the principal point.
 - SfM: `sfm.py` on pycolmap 4.2 (API changes between versions: introspect
   before using new calls). Intrinsics from calibration.yaml are fixed by

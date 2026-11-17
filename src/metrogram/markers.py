@@ -28,6 +28,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from metrogram.geometry import Similarity, umeyama
+from metrogram.sources import IMREAD_GRAY
 from metrogram.targets import BoardDetector
 
 
@@ -150,7 +151,7 @@ def detect_all(rec, image_dir: Path, detector: BoardDetector, s: MarkerSettings,
     ids = sorted(rec.reg_image_ids())
     for k, iid in enumerate(ids):
         im = rec.images[iid]
-        gray = cv2.imread(str(image_dir / im.name), cv2.IMREAD_GRAYSCALE)
+        gray = cv2.imread(str(image_dir / im.name), IMREAD_GRAY)
         if gray is None:
             raise OSError(f"cannot read {image_dir / im.name}")
         det = detector.detect(gray)

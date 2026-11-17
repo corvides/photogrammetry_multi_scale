@@ -40,6 +40,8 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
         max_views=args.max_views,
         holdout_frac=args.holdout,
         reject_factor=args.reject_factor,
+        blur_rel=args.blur_rel,
+        blur_floor_px=args.blur_floor_px,
         seed=args.seed,
     )
     source = Source(args.source)
@@ -267,6 +269,15 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--holdout", type=float, default=0.2, help="fraction of views held out")
     c.add_argument(
         "--reject-factor", type=float, default=3.0, help="reject views above this x median RMS"
+    )
+    c.add_argument(
+        "--blur-rel",
+        type=float,
+        default=2.0,
+        help="drop tags whose edge width > this x the scan median (0 = off; AprilGrid only)",
+    )
+    c.add_argument(
+        "--blur-floor-px", type=float, default=3.0, help="never drop tags sharper than this [px]"
     )
     c.add_argument("--seed", type=int, default=0)
     c.add_argument("--focus-note", default="", help="focus setting/distance, stored in output")

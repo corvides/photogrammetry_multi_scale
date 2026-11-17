@@ -16,9 +16,11 @@ def test_shipped_configs_load(path):
 def test_aprilgrid_geometry():
     t = load_config(CONFIGS / "targets/aprilgrid_6x6_acrylic.yaml")
     assert isinstance(t, AprilGridTarget)
-    assert t.gap_m == pytest.approx(0.04313 * 0.391)
+    assert t.gap_m == pytest.approx(0.010)
+    assert t.pitch_m == pytest.approx(0.060)
+    assert t.border_bits == 2
     w, h = t.extent_m
-    assert w == h == pytest.approx(6 * 0.04313 + 5 * 0.04313 * 0.391)
+    assert w == h == pytest.approx(0.350)
 
 
 def test_device_gsd():
