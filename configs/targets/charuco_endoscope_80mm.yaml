@@ -1,0 +1,22 @@
+kind: target
+type: charuco
+name: charuco_endoscope_80mm
+squares_x: 19
+squares_y: 10
+square_size_m: 0.0035   # NOMINAL until measured
+marker_size_m: 0.002625
+dictionary: DICT_5X5_1000
+legacy_pattern: false
+material: fine print on matte, non-glass, rigid material (laser-marked anodised aluminium, ceramic, photo-printed matte film on a rigid plate)
+dimensions_certified: false
+notes: >
+  Designed by metrogram target-design for a field of 112 x 63 mm (GSD 58.4
+  um/px): board 66.5 x 35 mm. Nominal dimensions: after printing, measure
+  between same-side edges (first and last columns: 63 mm; rows: 31.5 mm) and
+  scale square_size_m and marker_size_m by the same factor. Setup:
+  stereo_endoscope_placeholder, distance 0.08 m, fx 1371 px.
+  For a stereo MIS / RAS endoscope; sized for the PLACEHOLDER device (full
+  HD, 70 deg, working distance 40-120 mm, designed at 80 mm). Marker bit 0.38
+  mm: needs a process with features of 0.3 mm or finer and spread under 0.05
+  mm per edge; an ordinary UV print is not enough. Redesign once the
+  endoscope is known.

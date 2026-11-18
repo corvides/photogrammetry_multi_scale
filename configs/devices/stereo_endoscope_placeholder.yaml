@@ -1,0 +1,18 @@
+kind: device
+name: stereo_endoscope_placeholder
+camera_make: unknown
+camera_model: generic 3D (stereo) laparoscope, one eye
+sensor:
+  width_px: 1920
+  height_px: 1080
+  pixel_pitch_um: 2.8
+lens:
+  model: wide-angle endoscope optics (assumed 70 deg horizontal field of view)
+  focal_length_mm: 3.84   # = 1371 px x 2.8 um: from the assumed 70 deg field
+  fisheye: true
+colmap_model: OPENCV_FISHEYE
+notes: >
+  PLACEHOLDER until the endoscope is chosen: typical full-HD 3D laparoscope
+  values, used only to size a calibration target (target-design). Assumed
+  working distance 40-120 mm (design at 80 mm). Replace with the real sensor,
+  field of view and working range; the calibration supersedes all of it.

@@ -10,6 +10,37 @@ error** in shape, scale and placement. The output serves as a ground truth
 (with stated uncertainty) for related research, e.g. stereo-endoscope
 reconstruction, and may later be registered to CT.
 
+## Contents
+
+- [1. Why photogrammetry](#1-why-photogrammetry)
+- [2. Pipeline](#2-pipeline)
+- [3. Tooling decisions](#3-tooling-decisions)
+  - [Compute presets](#compute-presets)
+- [4. Scene and reference frame](#4-scene-and-reference-frame)
+- [5. Capture protocol (cm–dm scale)](#5-capture-protocol-cmdm-scale)
+  - [Current camera: Canon R6 + RF 35mm f/1.8 Macro IS STM](#current-camera-canon-r6--rf-35mm-f18-macro-is-stm)
+- [6. Multi-scale roadmap](#6-multi-scale-roadmap)
+- [7. Camera calibration](#7-camera-calibration)
+  - [7.1 Targets](#71-targets)
+  - [7.2 Camera model and fitting](#72-camera-model-and-fitting)
+  - [7.3 Holdout validation](#73-holdout-validation)
+  - [7.4 Reading the plots (R6, 40 cm set)](#74-reading-the-plots-r6-40-cm-set)
+  - [7.5 Ground sampling distance (GSD) and scale](#75-ground-sampling-distance-gsd-and-scale)
+  - [7.6 Capturing calibration images](#76-capturing-calibration-images)
+- [8. Evaluation (what "accurate" means here)](#8-evaluation-what-accurate-means-here)
+- [9. Roadmap](#9-roadmap)
+- [10. Working across machines](#10-working-across-machines)
+- [11. Development quick start](#11-development-quick-start)
+- [12. Quick reference: commands, modules, scripts](#12-quick-reference-commands-modules-scripts)
+  - [12.1 Which command for what](#121-which-command-for-what)
+  - [12.2 Commands and their main options](#122-commands-and-their-main-options)
+  - [12.3 Source modules (`src/metrogram/`)](#123-source-modules-srcmetrogram)
+  - [12.4 Scripts (`scripts/`)](#124-scripts-scripts)
+  - [12.5 Configs (`configs/`)](#125-configs-configs)
+- [13. Abbreviations and definitions](#13-abbreviations-and-definitions)
+
+Quick reference to commands, modules and scripts: §12. Abbreviations: §13.
+
 Design principles:
 
 - **Scale-agnostic**: from decimetres (TAPP: abdominal wall, inguinal region)
@@ -247,21 +278,143 @@ saddle points do not move with blur. AprilGrid is what we have now.
 
 **Requested** (if budget allows):
 
-| Target | For | Spec |
-|---|---|---|
-| A | R6 at the dm scale | ChArUco, ~A4, 12–15 mm squares, matte, glass or aluminium composite, **certified dimension report** |
-| B | stereo endoscope | ChArUco, ~80–120 mm, 3–5 mm squares, **matte non-glass** (coaxial light glare), rigid |
-| C (later) | macro/nerve scale | chrome-on-glass or ceramic, lithographic, 0.5–1 mm squares |
+| Target | For | Spec | Draft (`target-design`, 2026-11-18) |
+|---|---|---|---|
+| A | R6 at the dm scale (~40 cm) | ChArUco, ~A4, 12–15 mm squares, matte, glass or aluminium composite, **certified dimension report** | `charuco_r6_40cm_acrylic`: 15 × 10 squares of 15 mm, board 225 × 150 mm, marker bit 1.6 mm. For the acrylic shop. |
+| B | stereo endoscope (MIS / RAS) | ChArUco, matte non-glass (coaxial light glare), rigid, fine print | `charuco_endoscope_80mm`: 19 × 10 squares of 3.5 mm, board 66.5 × 35 mm, marker bit 0.38 mm. Sized for a **placeholder** full-HD, 70° endoscope at 40–120 mm (design at 80 mm). |
+| C (later) | macro, 0.3×–1× | chrome-on-glass or ceramic, lithographic, flat to a few µm | `charuco_macro_0p3_1x`: 20 × 13 squares of 3.5 mm, board 70 × 45.5 mm, marker bit 0.38 mm. Fills ~58 % of the field at 0.3×; at 1× about 10 × 7 squares are visible (partial views). |
+
+The drafts are in `configs/targets/` (YAML, with the material and process in
+`notes`) and `docs/targets/` (SVG, `--page fit`); the commands are in the
+worklog of 2026-11-18. They are for quotes and size estimates; redesign B
+once the endoscope is known.
 
 Endoscopes need fisheye models (`equidistant` / Kannala–Brandt) and good
 coverage of the image corners.
+
+#### Designing and generating a ChArUco target
+
+The target YAML is the specification: `target-svg` draws the board from it,
+and `calibrate` detects the same board from it. Make one YAML per physical
+board (never edit the YAML of a board that exists, except to set its measured
+size). Two commands:
+
+1. **`metrogram target-design`** sizes a board for a camera and a working
+   distance and writes the YAML.
+2. **`metrogram target-svg`** draws the YAML as a printable SVG in
+   millimetres. Inkscape opens it, and the SVG or a PDF can go to a printer
+   or a print shop.
+
+```sh
+# R6 + 35 mm at ~40 cm (or --gsd-um 70 from the 40 cm calibration, or --fx 5630)
+uv run metrogram target-design --device configs/devices/canon_r6_rf35macro.yaml \
+    --distance 0.40 --name r6_40cm_charuco -o configs/targets/r6_40cm_charuco.yaml
+uv run metrogram target-svg configs/targets/r6_40cm_charuco.yaml --page fit \
+    -o docs/targets/r6_40cm_charuco.svg
+```
+
+**`target-design`** first prints its reasoning, then writes the YAML only
+with `-o`. Run it without `-o` to try settings. The square size is the
+largest of three rules, on a `--step-mm` (0.5 mm) grid (the first rounded
+down, the two minima rounded up):
+
+| Rule | Option (default) | Why |
+|---|---|---|
+| about N squares on the short side of the board | `--squares-short` (10) | big squares tolerate blur and depth-of-field limits; 10 × ~15 gives 100–150 corners per view |
+| one marker bit spans at least N px at the working distance | `--min-bit-px` (6) | OpenCV needs about 4 px per bit; a 45° tilt costs 30 % |
+| one marker bit is at least N mm on the print | `--min-bit-mm` (0.8) | ink spread eats ≈ 0.2 mm per edge on ordinary prints; lower it only for a finer process (lithography, laser on ceramic) |
+
+Then as many squares as fit in the board size: `--fill` (0.6) × the field
+of view, on each axis (`--aspect sensor`) or on the short axis for both
+(`--aspect square`). Other options: `--marker-ratio` (0.75, marker / square),
+`--dictionary` (`DICT_5X5_1000`). The scale comes from `--gsd-um` (best: a
+measured GSD), or `--distance` (sensor to board) with `--fx` from a
+calibration, or with the nominal lens focal length from the device YAML
+(approximate: macro lenses breathe).
+
+Examples, R6 + 35 mm:
+
+| Setup | Field of view | Board | Squares | Set by |
+|---|---|---|---|---|
+| `--distance 0.40` (GSD ≈ 68 µm) | 374 × 250 mm | 217.5 × 145 mm | 15 × 10 of 14.5 mm (212 px) | 10 squares on the short side |
+| `--gsd-um 25` (~15 cm) | 137 × 91 mm | 75 × 52.5 mm | 10 × 7 of 7.5 mm (300 px) | bit ≥ 0.8 mm printed |
+
+At 15 cm the print limit, not the camera, sets the square size: the camera
+could resolve 1.4 mm squares there. Smaller boards need a finer print
+process (target C in the table above).
+
+**`target-svg`** options:
+
+| Option | Values (default) | Effect |
+|---|---|---|
+| `--page` | `a4` (default), `a3`, `letter` (landscape), `WxH` in mm (e.g. `300x200`), `fit` | page size; the board is centred. `fit` = board + margins + caption, for a print shop or a custom size. Stops with a message if the board does not fit (it never scales). |
+| `--margin` | mm (8) | white margin around everything; also the quiet zone the detector needs around the board |
+| `--caption` | `full` (default), `short`, `none` | text under the 100 mm scale bar (name, sizes, measuring hint). `short` / `none` for small boards. |
+| `-o` | path (`<name>.svg`) | output file |
+
+**Board aspect ratio: sensor or square?** The camera does not know
+portrait from landscape. Turning the camera 90° only turns the board in the
+image. The calibration needs the whole *sensor* covered across all views,
+not a board that matches the frame.
+
+- **Sensor aspect** gives the most corners per view when the board faces the
+  camera and nearly fills the frame. It is the default, for a board used by
+  one camera.
+- **Square** is orientation-free. It suits a board shared by cameras with
+  different sensor shapes (R6 3:2, endoscope 4:3 or 16:9), or a board that
+  also serves as the base under the phantoms for the SfM (§4: seen from all
+  around, a square board is the same from every side).
+- Either way, tilted views foreshorten one axis. A board smaller than the
+  field (`--fill` 0.5–0.7) can be moved into the image corners, which matters
+  more than the aspect ratio.
+
+**Ordering from a print shop** (e.g. the acrylic shop that made the
+AprilGrid):
+
+- Send the SVG (or a PDF of it, see below) generated with `--page fit`. Ask
+  for printing at **100 %, no scaling, no bleed**, and for the actual
+  process (UV flatbed print, screen print, laser engraving).
+- Ask for **white, opaque, matte** material: a transparent sheet shows
+  reflections from behind, and a glossy one glares. Prefer aluminium
+  composite (Dibond) or a thick (≥ 5 mm) acrylic sheet for flatness, or the
+  print on glass.
+- Tell them their last print spread black areas by ≈ 0.2 mm per edge (see
+  print spread above): some shops can compensate ("choke"). The corners
+  themselves do not move with an equal spread, but less spread keeps marker
+  bits readable at close range.
+- Ask for a measurement of two same-side distances if they can, and measure
+  it again on receipt (see "Measuring a printed board" below).
+
+**Printing it yourself:**
+
+- Convert the SVG to PDF and print the PDF. Printing an SVG from a browser
+  often adds margins or rescales the page.
+  ```sh
+  rsvg-convert -f pdf -o board.pdf docs/targets/charuco_a4_12mm_print.svg
+  ```
+  The Inkscape PDF export also keeps the exact size (297 × 210 mm checked).
+- In the print dialog: "Actual size" / 100 %, no fit-to-page, best quality,
+  black ink only, toner or ink saving off.
+- The 100 mm scale bar shows any page scaling by eye (fit-to-page is
+  typically 3–6 % off). The real measurement is on the board (same-side
+  edges).
+- **A test print on plain paper** is worth doing first, even though plain
+  paper is not a usable target (it curls and changes size with humidity by
+  0.1–0.3 %). It shows:
+  - the printer's scale along and across the paper feed;
+  - the printer's spread: look under a loupe where two black squares touch
+    (the 0.22 mm was measured on the acrylic AprilGrid, not on our printers);
+  - whether detection works on real photos: the ChArUco detector is plain
+    OpenCV at full resolution, and has so far only been tested on rendered
+    boards. A few shots at 40 cm and 15 cm will tell. At 15 cm, also check
+    that the spread does not bridge the checkerboard corners as it did the
+    AprilGrid tags (§7.6).
 
 **Stopgap while a certified target cannot be bought: a printed ChArUco on
 glass.** It is not certified, but its scale can be measured to about 0.01 %
 with a caliper, and glass keeps it flat.
 
-1. **Generate** the vector file (A4 landscape, millimetre units; Inkscape
-   opens it, and its PDF export keeps 297 × 210 mm):
+1. **Generate** the vector file (A4 landscape, millimetre units):
    ```sh
    uv run metrogram target-svg configs/targets/charuco_a4_12mm_print.yaml \
        -o docs/targets/charuco_a4_12mm_print.svg
@@ -269,10 +422,10 @@ with a caliper, and glass keeps it flat.
    The board: 20 × 14 squares of 12 mm (240 × 168 mm), 9 mm markers,
    `DICT_5X5_1000`. With the R6 + 35 mm it shows about 9 × 6 squares at
    ~15 cm and fills about 60 % of the field at ~40 cm. A 100 mm scale bar and
-   a caption are printed under it. For another size, copy the YAML, change
-   `squares_x/y`, `square_size_m` and `marker_size_m`, and regenerate.
-2. **Print** at 100 % ("actual size", no fit-to-page), best quality, toner or
-   ink saving off.
+   a caption are printed under it. For another size, use `target-design`
+   (above), or copy the YAML and change `squares_x/y`, `square_size_m` and
+   `marker_size_m`.
+2. **Print** as above, at 100 %.
 3. **Paper**: matte, smooth, heavy.
    - Inkjet (pigment ink if possible): **matte photo paper** (premium matte,
      170–230 g/m²). It gives the deepest black with no gloss: the best
@@ -297,7 +450,9 @@ with a caliper, and glass keeps it flat.
      or toner spread, ≈ 0.2 mm per edge on our AprilGrid), and same-side
      measurements cancel it.
    - Set `square_size_m` in the YAML to the measured length divided by 19
-     (or 13), and note the date and conditions in `notes`. If the two axes
+     (or 13), scale `marker_size_m` by the same factor (keep the 0.75 ratio),
+     and note the date and conditions in `notes`. Keep a copy of the nominal
+     YAML if you may want to regenerate the SVG. If the two axes
      differ by more than 0.1 %, reprint (or correct that axis in Inkscape):
      a different x / y scale is not modelled.
 
@@ -902,3 +1057,258 @@ uv run ruff check . && uv run ruff format .
   pytest plugins then break test collection, and its packages can shadow the
   venv's. Clear it for this project (`PYTHONPATH= uv run ...`), or use an
   alias such as `alias uvr='PYTHONPATH= uv run'`.
+
+---
+
+## 12. Quick reference: commands, modules, scripts
+
+All commands run from the repository root. On the laptop (ROS sourced),
+prefix them with `PYTHONPATH=` (§11). Every command has `-h` with all options
+and their defaults. Lengths in configs are in metres; outputs go to `runs/`
+(not in git) unless `-o` says otherwise.
+
+### 12.1 Which command for what
+
+| I want to… | Command | Input → output |
+|---|---|---|
+| check that config files load | `metrogram check-config` | YAML files → summary on screen |
+| size a ChArUco board for a camera and distance | `metrogram target-design` | device YAML + GSD or distance → target YAML |
+| draw a board for printing | `metrogram target-svg` | ChArUco target YAML → SVG in mm |
+| calibrate a camera (one focus setting) | `metrogram calibrate` | images / RAW / video + target YAML → `runs/calib/<name>/` |
+| pick SfM frames from a video | `metrogram extract-frames` | video → PNG frames in `data/frames/<video>/` |
+| reconstruct camera poses + sparse points | `metrogram sfm` | images + calibration.yaml + preset → `runs/sfm/<name>/` |
+| make it metric, in the board frame | `metrogram markers` | SfM run + target YAML → `<sfm run>/markers/` |
+| dense cloud, mesh, texture | `metrogram dense` | markers dir + preset → `<sfm run>/dense_<preset>/` |
+| look at results (PNG turntable or window) | `metrogram view` | PLY files / dirs → `views/*.png` or `--show` |
+| compare against reference geometry | `metrogram evaluate` | *planned* |
+| register to CT / another frame | `metrogram register` | *planned* |
+
+Typical chains:
+
+```sh
+# A. new camera or focus setting: calibrate
+metrogram calibrate data/raw/r6_calib_40cm -t configs/targets/aprilgrid_6x6_acrylic.yaml \
+    -d configs/devices/canon_r6_rf35macro.yaml --focus-note "MF, 40 cm"
+
+# B. scan an object: SfM -> metric -> dense -> look
+metrogram sfm data/raw/<scan> -c runs/calib/<calib>/calibration.yaml -p configs/presets/cpu-fast.yaml
+metrogram markers runs/sfm/<scan>_cpu-fast -t configs/targets/<target>.yaml
+metrogram dense runs/sfm/<scan>_cpu-fast/markers -p configs/presets/cpu-fast.yaml
+metrogram view runs/sfm/<scan>_cpu-fast/dense_cpu-fast/mesh.ply runs/sfm/<scan>_cpu-fast/markers
+
+# C. a new target: design -> draw -> print / order -> measure -> set square_size_m
+metrogram target-design --device configs/devices/<device>.yaml --gsd-um 70 \
+    --name <board> -o configs/targets/<board>.yaml
+metrogram target-svg configs/targets/<board>.yaml --page fit -o docs/targets/<board>.svg
+```
+
+### 12.2 Commands and their main options
+
+**`check-config <yaml>...`**: loads each file with the strict schema (unknown
+or missing keys are errors) and prints a summary. Run it after editing a
+config.
+
+**`target-design`**: sizes a ChArUco board (§7.1, "Designing and generating
+a ChArUco target"). Prints its reasoning; writes the YAML only with `-o`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--device` | required | device YAML (sensor size in px; nominal focal if no `--fx`) |
+| `--name` | required | board name (YAML and SVG caption) |
+| `--gsd-um` / `--distance` [+ `--fx`] | one of them | scale on the board: measured GSD (best), or distance from the sensor [m] with a calibrated or nominal focal length |
+| `--fill` | 0.6 | board size / field of view |
+| `--aspect` | `sensor` | `sensor` or `square` |
+| `--squares-short` | 10 | wished number of squares on the short side |
+| `--min-bit-px` / `--min-bit-mm` | 6 / 0.8 | smallest marker bit in the image / on the print |
+| `--marker-ratio`, `--dictionary`, `--step-mm` | 0.75, `DICT_5X5_1000`, 0.5 | marker / square, ArUco family, square size grid |
+| `-o`, `--force` | | write (overwrite) the target YAML |
+
+**`target-svg <target.yaml>`**: printable SVG, millimetre units, scale bar and
+caption (ChArUco only).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--page` | `a4` | `a4`, `a3`, `letter` (landscape), `WxH` in mm, or `fit` (board + margins + caption) |
+| `--margin` | 8 | white margin [mm] (also the detector's quiet zone) |
+| `--caption` | `full` | `full`, `short`, `none` |
+| `-o` | `<name>.svg` | output file |
+
+**`calibrate <source>`**: intrinsic calibration (§7). `<source>` is a video,
+a directory of images or RAW files (a RAW + JPG pair is read as RAW), or one
+image. Writes `calibration.yaml` (the result used by `sfm`),
+`camchain_kalibr.yaml`, `report.json` (all errors, per view) and the four
+plots of §7.4.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-t` | required | target YAML |
+| `-d` | none | device YAML (default camera model, sanity checks) |
+| `-m` | device's `colmap_model`, else `OPENCV` | camera model (COLMAP names) |
+| `--min-points` | 24 | minimum target points for a view to count |
+| `--max-views` | 60 | views kept after the pose-diversity selection |
+| `--holdout` | 0.2 | fraction of views held out for validation |
+| `--reject-factor` | 3.0 | reject views above this × the median view RMS |
+| `--sharpness-rel` | 0.5 | drop views below this × the median sharpness |
+| `--blur-rel`, `--blur-floor-px` | 2.0, 3.0 | per-tag blur filter (AprilGrid; 0 = off) |
+| `--corner-refine` | `full` | AprilGrid corners: `full`, `lines`, `none` (§7.2) |
+| `--stride` | 1 | every n-th frame / image |
+| `--focus-note` | | free text stored in the output (focus setting, distance) |
+| `--save-frames` | off | write annotated frames that were used |
+| `-o` | `runs/calib/<source>_<model>` | output dir |
+
+**`extract-frames <video>`**: splits the video into `-n` (120) segments and
+keeps the sharpest frame of each, unless it is much blurrier than the video's
+typical frame (`--sharpness-rel`). Lossless PNG.
+
+**`sfm <images>`**: COLMAP through pycolmap: features, matching, mapping.
+Arbitrary scale and frame.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-c` / `-d` | one of them | `calibration.yaml` (intrinsics fixed) / device YAML (nominal focal, self-calibration) |
+| `-p` | | preset YAML (`configs/presets/cpu-fast`, `cpu-full`, `gpu-full`) |
+| `--refine-intrinsics` | off | let bundle adjustment refine focal and distortion (always on with `-d`) |
+| `--matcher` | from preset | `exhaustive` (unordered photos) or `sequential` (video) |
+| `-o` | `runs/sfm/<images>_<preset>` | output dir |
+
+**`markers <sfm run>`**: detects the target in the SfM images, triangulates
+its points, aligns the model to the board frame (metres) with a robust
+similarity, and checks the scale on held-out points. Outputs in §11.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-t` | required | target YAML |
+| `--check-every` | 4 | every n-th tag / cell is a check point (0 = none) |
+| `--max-reproj-px`, `--min-views` | | outlier and visibility limits for triangulated points |
+| `--images` | from `sfm_report.json` | image dir |
+
+**`dense <markers dir>`**: OpenMVS densify, mesh, refine, texture, in the
+board frame. Writes `dense_points.ply`, `mesh.ply`, `textured/`,
+`dense_report.json` (with the board-plane check). Options: `-p` preset,
+`--no-texture`, `--images`, `-o`. Needs OpenMVS (`scripts/build_openmvs.sh`).
+
+**`view <ply or dir>...`**: Open3D, Z up, metres. PNG turntable by default,
+`--show` for a window. Options: `--views` (count), `--azimuths` / `--elev` /
+`--elevs`, `--crop auto|none|x0,y0,z0,x1,y1,z1`, `--frame-from` (reuse a
+viewpoint), `--zoom`, `--point-size`, `--width` / `--height`, `-o`.
+
+### 12.3 Source modules (`src/metrogram/`)
+
+| Module | Role | Used by |
+|---|---|---|
+| `cli.py` | argparse entry point; one `_cmd_*` per subcommand | `metrogram` |
+| `config.py` | strict, frozen dataclasses loaded from YAML: `Device`, `AprilGridTarget`, `CharucoTarget`, `Preset` | everything |
+| `sources.py` | image sources: video, image dir, RAW (rawpy, no lens correction, sensor orientation, maker crop) | calibrate, sfm |
+| `targets.py` | target detection → board 3D points + image 2D points. `AprilGridDetector` (downscaled detection, edge-line + X-junction refinement, edge width), `CharucoDetector` (OpenCV) | calibrate, markers |
+| `calibration.py` | scan, filters (points, sharpness, blur), pose selection, holdout split, OpenCV fit with outlier rounds, holdout validation, robust error stats | calibrate |
+| `calibration_io.py` | writes `calibration.yaml`, Kalibr camchain, `report.json`, the plots; prints the summary | calibrate |
+| `plots.py` | headless PNG plots: coverage, residuals, per-view error, distortion, markers | calibrate, markers |
+| `target_design.py` | board sizing rules, target YAML writer | target-design |
+| `target_svg.py` | ChArUco geometry from OpenCV's board, SVG writer, test rasterizer | target-svg, tests |
+| `frames.py` | sharp, evenly spread frames from a video | extract-frames |
+| `sfm.py` | COLMAP via pycolmap: image preparation, features, matching, mapping, report | sfm |
+| `markers.py` | target triangulation, board-frame alignment, check points, metric COLMAP model, PLY overlays | markers |
+| `geometry.py` | `Similarity`, `umeyama` (similarity alignment) | markers |
+| `dense.py` | COLMAP undistortion + OpenMVS tools, board-plane check, OBJ copy | dense |
+| `ply.py` | minimal binary PLY writer / reader, mesh overlays (frustums, axes) | markers, dense, view |
+| `viewer.py` | Open3D rendering of PLY layers: turntable PNGs or a window | view |
+
+Tests (`tests/`, pytest on synthetic data): `synthetic_scene.py` renders known
+scenes; one `test_*.py` per stage. `-m "not slow"` skips the slow ones.
+
+### 12.4 Scripts (`scripts/`)
+
+| Script | Purpose | Usage |
+|---|---|---|
+| `build_openmvs.sh` | builds OpenMVS (pinned, no sudo) into `~/opt/openmvs` for the `dense` stage | `scripts/build_openmvs.sh` (CPU); `--cuda --arch 120` on the GPU server; `--version v2.4.0`, `--prefix DIR` |
+| `plot_corner_refine.py` | README §7.2 figure: compares `--corner-refine full / lines / none` runs on one image set | `PYTHONPATH= uv run python scripts/plot_corner_refine.py <images> <run_full> <run_lines> <run_none> -o out.png` |
+
+### 12.5 Configs (`configs/`)
+
+| Folder | Files | Notes |
+|---|---|---|
+| `devices/` | `canon_r6_rf35macro`, `xperia_1_iii_main`, `stereo_endoscope_placeholder` | sensor, nominal lens, COLMAP model; the placeholder only sizes targets |
+| `targets/` | `aprilgrid_6x6_acrylic` (in use), `charuco_a4_12mm_print` (stopgap), `charuco_r6_40cm_acrylic`, `charuco_endoscope_80mm`, `charuco_macro_0p3_1x` (drafts for quotes) | one YAML per physical board; measured sizes go here |
+| `presets/` | `cpu-fast`, `cpu-full`, `gpu-full` | image size, SfM (GPU, matcher, features), dense (CUDA, resolution level, views), mesh (decimation, refine, texture) |
+
+---
+
+## 13. Abbreviations and definitions
+
+**Context and hardware**
+
+| Term | Meaning |
+|---|---|
+| MIS | minimally invasive surgery (laparoscopy, endoscopy) |
+| RAS | robot-assisted surgery |
+| TAPP | transabdominal preperitoneal (laparoscopic hernia repair) |
+| CT | computed tomography |
+| phantom | physical model of anatomy used for testing |
+| IS / IBIS / EIS | lens / in-body / electronic image stabilisation (all off: they move the optical axis) |
+| AF / MF | autofocus / manual focus |
+| RAW, CR3, DNG | unprocessed sensor data (Canon CR3, Adobe DNG), decoded without lens correction |
+| ISO, f/N | sensor gain; aperture (focal length / pupil diameter) |
+| magnification (m) | image size / object size on the sensor (1× = life size) |
+| focus breathing | the focal length changes with the focus setting: one calibration per focus setting |
+
+**Photogrammetry and calibration**
+
+| Term | Meaning |
+|---|---|
+| SfM | Structure from Motion: camera poses + sparse 3D points from overlapping images |
+| MVS | Multi-View Stereo: dense points / mesh from posed images (OpenMVS here) |
+| BA | bundle adjustment: joint least-squares refinement of poses, points (and intrinsics) |
+| intrinsics | camera-internal parameters: fx, fy (focal length in px), cx, cy (principal point), distortion |
+| extrinsics / pose | camera position and orientation in a frame |
+| principal point | where the optical axis meets the sensor (cx, cy) |
+| k1, k2, (k3…), p1, p2 | radial and tangential (decentering) distortion coefficients (Brown–Conrady) |
+| OPENCV / FULL_OPENCV | COLMAP camera models: fx, fy, cx, cy, k1, k2, p1, p2 / plus k3–k6 |
+| fisheye, Kannala–Brandt | wide-angle model (`OPENCV_FISHEYE`, equidistant) for endoscopes |
+| reprojection error | image distance between a detected point and the projection of its 3D point [px] |
+| RMS | root mean square (of reprojection errors) |
+| view RMS, core RMS | RMS of one image; RMS over views without outlier views (≤ 3 × median) |
+| p90, p95 | 90th / 95th percentile |
+| train / holdout views | views used for fitting / kept aside to test the fit with frozen intrinsics |
+| PnP, IPPE | pose from n known points (Perspective-n-Point); planar PnP solver used for holdout views |
+| LM | Levenberg–Marquardt (non-linear least squares) |
+| GSD | ground sampling distance: size of one pixel on the object [µm/px] = Z / fx |
+| DoF | depth of field (sharp depth range); also "degrees of freedom" in pose contexts |
+| coverage | how much of the sensor area holds target points, over all views |
+| edge width | blur measure per tag: 5–95 % intensity rise / maximum slope [px] |
+| board frame | reference frame of the target: x right, y up, z out, metres |
+| control / check points | target points used for the alignment / held out to measure its error |
+| Umeyama | closed-form similarity (scale + rotation + translation) between point sets |
+| sparse / dense | SfM points (features) / MVS points (per pixel) |
+
+**Targets and printing**
+
+| Term | Meaning |
+|---|---|
+| AprilTag, AprilGrid | coded square markers; Kalibr's grid of them with corner squares |
+| Kalibr | ETH calibration toolbox (camchain YAML format) |
+| ArUco | OpenCV's coded square markers (dictionaries such as `DICT_5X5_1000`) |
+| ChArUco | checkerboard with ArUco markers in the white squares: saddle-point corners + IDs |
+| X-junction / saddle point | point where two black and two white squares meet: a precise, blur-invariant corner |
+| marker bit | one cell of a marker's code grid; the smallest printed feature |
+| print spread (dot gain) | printed black areas larger than drawn (≈ 0.22 mm per edge on our AprilGrid) |
+| same-side edges | two edges of the same type (e.g. both left edges): the distance between them cancels print spread and reading bias |
+| quiet zone | white margin around a board that detection needs |
+| certified target | board with a calibration certificate of its dimensions |
+
+**Software and formats**
+
+| Term | Meaning |
+|---|---|
+| COLMAP, pycolmap | SfM software and its Python bindings |
+| OpenMVS | dense reconstruction, meshing, texturing (external binaries) |
+| OpenCV | computer vision library (detection, calibration) |
+| Open3D, trimesh | 3D processing / viewing libraries |
+| rawpy (LibRaw) | RAW decoding |
+| PLY, OBJ | 3D point / mesh file formats |
+| SVG, PDF | vector graphics / print formats |
+| YAML, JSON | text config / report formats |
+| uv | Python package and environment manager |
+| ruff | Python linter and formatter |
+| pytest | test runner |
+| ROS | Robot Operating System (sourced on the laptop) |
+| CUDA, sm_120 | NVIDIA GPU toolkit; Blackwell compute capability |

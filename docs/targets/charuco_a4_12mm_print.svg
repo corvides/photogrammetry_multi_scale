@@ -298,8 +298,8 @@
 <rect x="118.5" y="181.5" width="0.25" height="2"/>
 <rect x="128.25" y="180" width="0.25" height="3.5"/>
 </g>
-<text x="131.5" y="183.5" font-size="3" font-family="DejaVu Sans, Arial, sans-serif" fill="#000000">100 mm</text>
-<text x="28.5" y="190" font-size="3" font-family="DejaVu Sans, Arial, sans-serif" fill="#000000">charuco_a4_12mm_print: ChArUco 20 x 14 squares of 12 mm, markers 9 mm, DICT_5X5_1000, legacy_pattern=False, board 240 x 168 mm</text>
-<text x="28.5" y="195" font-size="3" font-family="DejaVu Sans, Arial, sans-serif" fill="#000000">Print at 100 % (no fit-to-page). Check the scale with a caliper between SAME-SIDE edges (e.g. left edges of the first and last columns: 228 mm),</text>
-<text x="28.5" y="200" font-size="3" font-family="DejaVu Sans, Arial, sans-serif" fill="#000000">not the outer extent: printers enlarge black areas. Generated 2026-11-18 by metrogram target-svg.</text>
+<text x="131.5" y="183.5" font-family="DejaVu Sans, Arial, sans-serif" font-size="3" fill="#000000">100 mm</text>
+<text x="28.5" y="190" font-family="DejaVu Sans, Arial, sans-serif" font-size="3" fill="#000000">charuco_a4_12mm_print: ChArUco 20 x 14 squares of 12 mm, markers 9 mm, DICT_5X5_1000, legacy_pattern=False, board 240 x 168 mm</text>
+<text x="28.5" y="195" font-family="DejaVu Sans, Arial, sans-serif" font-size="3" fill="#000000">Print at 100 % (no fit-to-page). Check the scale with a caliper between SAME-SIDE edges (e.g. left edges of the first and last columns: 228 mm),</text>
+<text x="28.5" y="200" font-family="DejaVu Sans, Arial, sans-serif" font-size="3" fill="#000000">not the outer extent: printers enlarge black areas. Generated 2026-11-18 by metrogram target-svg.</text>
 </svg>

@@ -1,9 +1,10 @@
 """Printable ChArUco SVG: same geometry as OpenCV's board, detectable, mm units."""
 
 import numpy as np
+import pytest
 
 from metrogram.config import CharucoTarget
-from metrogram.target_svg import charuco_svg, rasterize
+from metrogram.target_svg import charuco_svg, parse_page, rasterize
 from metrogram.targets import CharucoDetector
 
 T = CharucoTarget(
@@ -26,3 +27,16 @@ def test_rasterized_board_is_detected_at_nominal_positions():
     assert d is not None and len(d) == (7 - 1) * (5 - 1)
     pred = (d.obj[:, :2] * 1e3 + m) * k - 0.5
     assert np.abs(pred - d.img).max() < 0.25
+
+
+def test_custom_page_and_fit():
+    s = charuco_svg(T, page="150x120", caption="short")
+    assert 'width="150mm" height="120mm"' in s
+    s = charuco_svg(T, page="fit", margin_mm=5, caption="none")
+    # 84 mm board, but the 80 mm scale bar + its label is wider: 95.6 mm + 2 x 5 mm
+    assert 'width="105.6mm"' in s
+    with pytest.raises(ValueError, match="does not fit"):
+        charuco_svg(T, page="80x60")
+    with pytest.raises(ValueError, match="use a4"):
+        parse_page("b5")
+    assert parse_page("A3") == (420.0, 297.0) and parse_page("fit") is None

@@ -38,7 +38,9 @@ def parse_page(s: str) -> tuple[float, float] | None:
     try:
         w, h = (float(v) for v in s.split("x"))
     except ValueError:
-        raise ValueError(f"page {s!r}: use a4, a3, letter, fit or WxH in mm (e.g. 300x200)")
+        raise ValueError(
+            f"page {s!r}: use a4, a3, letter, fit or WxH in mm (e.g. 300x200)"
+        ) from None
     if w <= 0 or h <= 0:
         raise ValueError(f"page {s!r}: sizes must be positive")
     return w, h
@@ -137,14 +139,19 @@ CHAR_W = 0.6  # average glyph width / font size (DejaVu Sans; generous)
 
 
 def charuco_svg(
-    t: CharucoTarget, page: str | tuple[float, float] | None = "a4", margin_mm: float = 8.0
+    t: CharucoTarget,
+    page: str | tuple[float, float] | None = "a4",
+    margin_mm: float = 8.0,
+    caption: str = "full",
 ) -> str:
     """SVG document of the board, centred on ``page``: a name or ``WxH`` string
     (see `parse_page`), a (width, height) in mm, or None / "fit" for a page just
     large enough (board + margin + caption).
 
-    The caption font is 3 mm, reduced (down to 2 mm) when the caption is wider
-    than the board; on a "fit" page the page is widened if it still does not fit.
+    ``caption``: "full" (three lines), "short" (two short lines, for small
+    boards) or "none" (scale bar only). The caption font is 3 mm, reduced
+    (down to 2 mm) when the caption is wider than the board; on a "fit" page
+    the page is widened if it still does not fit.
     """
     squares, markers = charuco_shapes(t)
     bw, bh = (v * 1e3 for v in t.extent_m)
@@ -158,17 +165,29 @@ def charuco_svg(
         "not the outer extent: printers enlarge black areas. "
         f"Generated {date.today().isoformat()} by metrogram target-svg.",
     ]
-    text_w3 = max(len(line) for line in lines) * CHAR_W * 3.0  # width at 3 mm font
+    if caption == "short":
+        lines = [
+            f"{t.name}: {t.squares_x} x {t.squares_y} x {_f(sq)} mm, {t.dictionary}",
+            f"print 100 %; same-side check {_f((t.squares_x - 1) * sq)} mm",
+        ]
+    elif caption == "none":
+        lines = []
+    elif caption != "full":
+        raise ValueError(f"caption {caption!r}: use full, short or none")
+    text_w3 = max((len(line) for line in lines), default=0) * CHAR_W * 3.0  # width at 3 mm font
     size = parse_page(page) if isinstance(page, str) else page
     room = bw if size is None else size[0] - 2 * margin_mm
-    fs = min(3.0, max(2.0, 3.0 * room / text_w3))
+    fs = min(3.0, max(2.0, 3.0 * room / text_w3)) if lines else 3.0
     text_w = text_w3 * fs / 3.0
-    cap_h = 11.0 + fs * (1 + 5 * (len(lines) - 1) / 3.0)  # scale bar + text lines
+    cap_h = 7.0 + (4.0 + fs * (1 + 5 * (len(lines) - 1) / 3.0) if lines else 0.0)
+    L = 100.0 if bw >= 100 else max(10.0, 10.0 * int(bw // 10))  # scale bar [mm]
+    bar_w = L + 3 + 7 * CHAR_W * fs  # bar + "100 mm" label
+    foot_w = max(text_w, bar_w)  # scale bar and caption block
     if size is None:
-        pw, ph = max(bw, text_w) + 2 * margin_mm, bh + 2 * margin_mm + cap_h
+        pw, ph = max(bw, foot_w) + 2 * margin_mm, bh + 2 * margin_mm + cap_h
     else:
         pw, ph = size
-    if max(bw, text_w) + 2 * margin_mm > pw or bh + cap_h + 2 * margin_mm > ph:
+    if max(bw, foot_w) + 2 * margin_mm > pw or bh + cap_h + 2 * margin_mm > ph:
         raise ValueError(
             f"board {_f(bw)}x{_f(bh)} mm + {cap_h:.0f} mm caption + 2 x {margin_mm:g} mm "
             f"margin does not fit on a {_f(pw)}x{_f(ph)} mm page"
@@ -192,8 +211,8 @@ def charuco_svg(
         out.append(f'<path fill-rule="evenodd" d="{d}"/>')
     out.append("</g>")
     # Scale bar: 100 mm (or the board width rounded down to 10 mm), ticks every 10 mm.
-    L = 100.0 if bw >= 100 else max(10.0, 10.0 * int(bw // 10))
-    sx = min(ox, (pw - text_w) / 2)
+    # left-aligned with the board, unless the caption is wider: then centred
+    sx = ox if ox + foot_w <= pw - margin_mm else (pw - foot_w) / 2
     sy = oy + bh + 6.0
     n = int(L // 10)
     out.append('<g id="scale" fill="#000000" stroke="none">')

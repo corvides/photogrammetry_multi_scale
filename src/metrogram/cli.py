@@ -30,8 +30,59 @@ def _cmd_target_svg(args: argparse.Namespace) -> int:
     if not isinstance(target, CharucoTarget):
         raise ConfigError(f"{args.target}: only ChArUco targets can be generated so far")
     out = Path(args.out or f"{target.name}.svg")
-    out.write_text(charuco_svg(target, page=None if args.page == "fit" else args.page))
+    try:
+        svg = charuco_svg(target, page=args.page, margin_mm=args.margin, caption=args.caption)
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
+    out.write_text(svg)
     print(f"wrote {out} (print at 100 %, then measure and update square_size_m)")
+    return 0
+
+
+def _cmd_target_design(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from metrogram.target_design import design_charuco
+
+    device = load_config(args.device)
+    if not isinstance(device, Device):
+        raise ConfigError(f"{args.device} is not a device config")
+    if args.gsd_um is not None:
+        gsd = args.gsd_um * 1e-6
+    elif args.distance is None:
+        raise ConfigError("give --distance (with or without --fx) or --gsd-um")
+    elif args.fx is not None:
+        gsd = args.distance / args.fx
+    else:
+        gsd = device.gsd_m(args.distance)
+    try:
+        d = design_charuco(
+            args.name,
+            (device.sensor.width_px, device.sensor.height_px),
+            gsd,
+            fill=args.fill,
+            aspect=args.aspect,
+            squares_short=args.squares_short,
+            marker_ratio=args.marker_ratio,
+            dictionary=args.dictionary,
+            min_bit_px=args.min_bit_px,
+            min_bit_mm=args.min_bit_mm,
+            step_mm=args.step_mm,
+        )
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
+    print(d.summary())
+    if args.out:
+        out = Path(args.out)
+        if out.exists() and not args.force:
+            raise ConfigError(f"{out} exists (use --force to overwrite)")
+        note = f"Setup: {device.name}, " + (
+            f"GSD {args.gsd_um:g} um/px given."
+            if args.gsd_um is not None
+            else f"distance {args.distance:g} m" + (f", fx {args.fx:g} px." if args.fx else ".")
+        )
+        out.write_text(d.yaml(note))
+        print(f"wrote {out}; next: metrogram target-svg {out} --page fit")
     return 0
 
 
@@ -317,11 +368,44 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("-o", "--out", help="output SVG (default <target name>.svg)")
     c.add_argument(
         "--page",
-        choices=["a4", "a3", "letter", "fit"],
         default="a4",
-        help="landscape page size; fit = board + margins only",
+        help="a4, a3, letter (landscape), WxH in mm (e.g. 300x200), or fit "
+        "(page = board + margins + caption)",
+    )
+    c.add_argument("--margin", type=float, default=8.0, help="white margin around [mm]")
+    c.add_argument(
+        "--caption",
+        choices=["full", "short", "none"],
+        default="full",
+        help="text under the scale bar (short / none for small boards)",
     )
     c.set_defaults(func=_cmd_target_svg)
+
+    c = sub.add_parser(
+        "target-design",
+        help="size a ChArUco target for a camera + working distance (writes a target YAML)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    c.add_argument("--device", required=True, help="device config YAML (sensor size)")
+    c.add_argument("--name", required=True, help="target name (YAML name, SVG caption)")
+    c.add_argument("--distance", type=float, help="working distance [m] (sensor to board)")
+    c.add_argument(
+        "--fx", type=float, help="calibrated focal length [px] (else the nominal lens focal)"
+    )
+    c.add_argument("--gsd-um", type=float, help="GSD [um/px], instead of --distance")
+    c.add_argument("--fill", type=float, default=0.6, help="board size / field of view")
+    c.add_argument("--aspect", choices=["sensor", "square"], default="sensor")
+    c.add_argument("--squares-short", type=int, default=10, help="squares on the short side")
+    c.add_argument("--marker-ratio", type=float, default=0.75, help="marker / square size")
+    c.add_argument("--dictionary", default="DICT_5X5_1000")
+    c.add_argument("--min-bit-px", type=float, default=6.0, help="marker bit in the image")
+    c.add_argument(
+        "--min-bit-mm", type=float, default=0.8, help="marker bit on the print (print process)"
+    )
+    c.add_argument("--step-mm", type=float, default=0.5, help="square size rounding")
+    c.add_argument("-o", "--out", help="write the target YAML here (else print only)")
+    c.add_argument("--force", action="store_true", help="overwrite --out")
+    c.set_defaults(func=_cmd_target_design)
 
     c = sub.add_parser(
         "extract-frames",

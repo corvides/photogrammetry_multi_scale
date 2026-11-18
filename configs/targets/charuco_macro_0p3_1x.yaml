@@ -1,0 +1,24 @@
+kind: target
+type: charuco
+name: charuco_macro_0p3_1x
+squares_x: 20
+squares_y: 13
+square_size_m: 0.0035   # NOMINAL until measured
+marker_size_m: 0.002625
+dictionary: DICT_5X5_1000
+legacy_pattern: false
+material: lithographic, chrome on glass (matte / anti-reflective) or ceramic; flatness of a few um
+dimensions_certified: false
+notes: >
+  Designed by metrogram target-design for a field of 120 x 80 mm (GSD 21.9
+  um/px): board 70 x 45.5 mm. Nominal dimensions: after printing, measure
+  between same-side edges (first and last columns: 66.5 mm; rows: 42 mm) and
+  scale square_size_m and marker_size_m by the same factor. Setup:
+  canon_r6_rf35macro, GSD 21.9 um/px given.
+  For a macro setup at 0.3x-1x on a full-frame 6.56 um sensor (R6 sensor,
+  e.g. with a 1:1 macro lens; the RF 35 mm stops at 0.5x). Designed at 0.3x
+  (GSD 21.9 um/px), where the board fills ~58 % of the field; at 1x (6.6
+  um/px, field 36 x 24 mm) about 10 x 7 squares are visible (partial views
+  are fine with ChArUco). Marker bit 0.38 mm, but at 1x the ink spread of an
+  ordinary print is ~30 px: lithography only. Depth of field at 1x and f/8 is
+  ~1 mm, so the board must be flat to a few um.

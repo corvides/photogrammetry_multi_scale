@@ -94,12 +94,18 @@ reports) for medical phantoms. Full background and decisions are in
   `metrogram target-svg` (`target_svg.py`: layout taken from OpenCV's
   CharucoBoard, mm units, one evenodd path per marker, scale bar) on matte
   paper, mounted on float glass, square size set from a caliper measurement.
+  `metrogram target-design` (`target_design.py`) sizes a ChArUco for a device +
+  distance/GSD (rules in px and printed mm: N squares on the short side, bit ≥
+  6 px, bit ≥ 0.8 mm printed) and writes the YAML; `target-svg` takes `--page
+  a4|a3|letter|WxH|fit`, `--margin`, `--caption full|short|none`. The YAML is
+  the spec of one physical board: one YAML per board, measured sizes go in it
+  (marker_size_m scaled with square_size_m).
 
 ## Repo conventions
 
 - Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
   (argparse, `cli.py`). Existing: `check-config`, `calibrate`,
-  `target-svg`, `extract-frames`, `sfm`, `markers`, `view`, `dense`. Planned: `evaluate`,
+  `target-design`, `target-svg`, `extract-frames`, `sfm`, `markers`, `view`, `dense`. Planned: `evaluate`,
   `register`.
 - `config.py`: strict frozen dataclasses loaded from YAML (`kind:
   device|target|preset`; targets also need `type: aprilgrid|charuco`).

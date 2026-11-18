@@ -1,0 +1,21 @@
+kind: target
+type: charuco
+name: charuco_r6_40cm_acrylic
+squares_x: 15
+squares_y: 10
+square_size_m: 0.015   # NOMINAL until measured
+marker_size_m: 0.01125
+dictionary: DICT_5X5_1000
+legacy_pattern: false
+material: UV print on white opaque matte acrylic (>= 5 mm) or aluminium composite
+dimensions_certified: false
+notes: >
+  Designed by metrogram target-design for a field of 383 x 255 mm (GSD 70.0
+  um/px): board 225 x 150 mm. Nominal dimensions: after printing, measure
+  between same-side edges (first and last columns: 210 mm; rows: 135 mm) and
+  scale square_size_m and marker_size_m by the same factor. Setup:
+  canon_r6_rf35macro, GSD 70 um/px given.
+  For the acrylic shop (same shop as the AprilGrid). R6 + RF 35 mm at ~40 cm
+  (measured GSD 70 um/px). Marker bit 1.6 mm: any decent UV / screen print
+  works. Ask the shop to compensate their ink spread (about 0.2 mm per edge
+  on the AprilGrid) and for same-side measurements.
