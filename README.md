@@ -182,7 +182,7 @@ the **square of magnification**.
 |---|---|---|---|---|
 | 2–20 cm | TAPP organs, wall | R6 + 35 mm @ 25–40 cm | 50–70 µm | baseline |
 | 0.5–3 cm | nerve segments, nodules | 0.3–1× macro | 7–20 µm | turntable, **focus stacking**, ring light + polarizers |
-| < 5 mm | fine nerve structure | 1–5× macro / microscope objective | 1–5 µm | motorized stages; spray particles become visible; consider micro-CT or profilometry |
+| under 5 mm | fine nerve structure | 1–5× macro / microscope objective | 1–5 µm | motorized stages; spray particles become visible; consider micro-CT or profilometry |
 
 Reference for macro photogrammetry: **scAnt** (open-source insect scanner with
 focus stacking, 2021).
@@ -237,7 +237,13 @@ saddle points do not move with blur. AprilGrid is what we have now.
   assumes 1 bit. Configure `border_bits: 2` in the target YAML.
 - Board frame: origin at the outer bottom-left corner of tag 0 (caption at
   the bottom), x right, y up, z out of the board.
-- **To do:** caliper check of the outer extent (350 mm) to certify the scale.
+- **Print spread:** the black areas are printed about 0.22 mm larger per
+  edge than nominal (measured on R6 40 cm images, see §7.2), so a tag
+  touches its Kalibr corner squares with a ≈ 0.45 mm overlap. The pitch is
+  not affected, but outer dimensions are.
+- **To do:** caliper check of the scale between **same-side** edges, e.g.
+  the left edges of tag 0 and tag 5: 300 mm. Not the outer extent (350 mm),
+  which includes the print spread. See "Measuring a printed board" below.
 
 **Requested** (if budget allows):
 
@@ -249,6 +255,77 @@ saddle points do not move with blur. AprilGrid is what we have now.
 
 Endoscopes need fisheye models (`equidistant` / Kannala–Brandt) and good
 coverage of the image corners.
+
+**Stopgap while a certified target cannot be bought: a printed ChArUco on
+glass.** It is not certified, but its scale can be measured to about 0.01 %
+with a caliper, and glass keeps it flat.
+
+1. **Generate** the vector file (A4 landscape, millimetre units; Inkscape
+   opens it, and its PDF export keeps 297 × 210 mm):
+   ```sh
+   uv run metrogram target-svg configs/targets/charuco_a4_12mm_print.yaml \
+       -o docs/targets/charuco_a4_12mm_print.svg
+   ```
+   The board: 20 × 14 squares of 12 mm (240 × 168 mm), 9 mm markers,
+   `DICT_5X5_1000`. With the R6 + 35 mm it shows about 9 × 6 squares at
+   ~15 cm and fills about 60 % of the field at ~40 cm. A 100 mm scale bar and
+   a caption are printed under it. For another size, copy the YAML, change
+   `squares_x/y`, `square_size_m` and `marker_size_m`, and regenerate.
+2. **Print** at 100 % ("actual size", no fit-to-page), best quality, toner or
+   ink saving off.
+3. **Paper**: matte, smooth, heavy.
+   - Inkjet (pigment ink if possible): **matte photo paper** (premium matte,
+     170–230 g/m²). It gives the deepest black with no gloss: the best
+     choice.
+   - Laser: smooth heavyweight laser paper (120–160 g/m²), or matte-coated
+     laser paper. Toner has a slight sheen: avoid lighting at the mirror
+     angle.
+   - Avoid glossy, satin or lustre paper (specular highlights hide corners),
+     and plain 80 g/m² office paper (it shows through, cockles and stretches).
+4. **Mount** the print on **float glass** (3–4 mm, e.g. picture-frame glass
+   with ground edges), print side out, with a thin even adhesive: spray
+   photo-mount adhesive or a transfer-adhesive sheet. Roll it flat from the
+   centre outwards, without bubbles. Aluminium composite or a ceramic tile
+   also work; cardboard and foam board bend.
+5. **Measure** after mounting, once the paper has acclimatised to the room
+   (paper changes size with humidity, by ~0.1 % for a large change).
+   - Measure between **same-side edges** of squares: e.g. the left edges of
+     the first and last columns, 19 × 12 = 228 mm, and the top edges of the
+     first and last rows, 13 × 12 = 156 mm. Repeat in a few places, along
+     both axes.
+   - Don't measure the outer extent: printers make black areas larger (ink
+     or toner spread, ≈ 0.2 mm per edge on our AprilGrid), and same-side
+     measurements cancel it.
+   - Set `square_size_m` in the YAML to the measured length divided by 19
+     (or 13), and note the date and conditions in `notes`. If the two axes
+     differ by more than 0.1 %, reprint (or correct that axis in Inkscape):
+     a different x / y scale is not modelled.
+
+**Measuring a printed board.** A caliper itself is precise (0.01–0.03 mm),
+but a print has no physical edge to clamp: the jaw tips are aligned by eye,
+to roughly ±0.05–0.1 mm per edge. That reading error, not the caliper, sets
+the result. How to keep it small:
+
+- **Same-side edges.** Put both tips on the same kind of transition (e.g.
+  the left edge of a black square, white to black going right). Where *you*
+  judge an edge to be (and where the printer put it) is then biased the same
+  way at both ends, and cancels. Across opposite sides (an outer width), it
+  adds up twice.
+- **Long baselines.** ±0.1 mm is 0.04 % of 228 mm, but 0.8 % of one 12 mm
+  square. Never measure single squares.
+- **Look straight down, magnified.** Use the thin outside-jaw tips, resting
+  lightly on the print, and a 10× loupe, looking perpendicular to the
+  surface (parallax). Diffuse light.
+- **Repeat and report the spread.** For example 5 different row / column
+  pairs per axis, 3 readings each, ideally by two people. Use the mean; the
+  standard deviation is your scale uncertainty, to note in the YAML.
+- **What to expect:** about 0.02–0.05 % scale uncertainty, against printer
+  scale errors of 0.1–1 %. Worth doing even with eye readings.
+- **Without eye readings:** image a reference of certified length in the
+  board plane with the camera (a certified steel rule or glass scale, or
+  precision bearing balls, whose diameter is held to about 1 µm), and
+  let the pipeline measure it. That check becomes part of the error report
+  (the planned `evaluate` stage), independent of the board's own scale.
 
 ### 7.2 Camera model and fitting
 
@@ -309,8 +386,7 @@ moved focus).
 
 1. **Detect** the board in every frame. AprilGrid detection runs on a copy
    downscaled to ≤ 2000 px; each corner is then refined at full resolution
-   (edge lines fitted on the middle 60 % of each tag side, intersected, then
-   a small `cornerSubPix`).
+   (see "Corner refinement" below).
 2. **Blur filter** (per tag): the detector measures the width of each tag's
    edges,
    ```math
@@ -332,6 +408,62 @@ moved focus).
 6. **Validate** on the holdout views, write `calibration.yaml` (COLMAP and
    OpenCV parameters), `camchain_kalibr.yaml`, `report.json` (per-view data)
    and the plots (§7.4).
+
+**Corner refinement (AprilGrid, `--corner-refine`).** OpenCV finds the tags
+on the downscaled copy, with corners good to a pixel or so of that copy (a
+few px at full resolution). Each tag is then refined at full resolution in
+two steps:
+
+1. **Edge lines** (`lines`): along the middle 60 % of each tag side (away
+   from the corners), the dark-to-bright edge is located with subpixel
+   precision in many short profiles. A straight line is fitted per side
+   (with outlier rejection), and the 4 corners are the intersections of
+   adjacent lines. The same profiles give the edge width used by the blur
+   filter.
+2. **X-junction** (`full`, the default): on Kalibr boards each tag corner
+   touches a small black corner square, which makes an X-shaped junction (a
+   saddle point, as on a checkerboard). `cornerSubPix`, in a window of 4 %
+   of the tag side around the line intersection, moves the corner to that
+   saddle. If it moves more than half its window, there is no clean
+   junction, and the **whole tag is rejected**.
+
+Why the second step matters, on the R6 40 cm set:
+
+| `--corner-refine` | corners | train RMS | holdout RMS | $f_x$ [px] |
+|---|---|---|---|---|
+| `full` | edge lines + X-junction | **0.48 px** | **0.49 px** | 5630.1 ± 1.3 |
+| `lines` | edge-line intersections | 3.36 px | 3.28 px | 5602.4 ± 9 |
+| `none` | OpenCV coarse corners (downscaled copy) | 18.0 px | 18.3 px | 5609 ± 43 |
+
+The line corners lie **0.31 mm outward** (along the tag diagonal, median of
+1104 corners) from the junction corners, in every tag: the edges of the
+printed black areas are ≈ 0.22 mm outside their nominal position (ink or
+toner spread). The tags are therefore 0.44 mm larger than designed, around
+their own centres, which no camera model can absorb, hence the 3.4 px RMS
+and a 0.5 % focal-length shift. The junction is where the tag and its corner
+square meet; it does not move when both grow, so the junction corners keep
+the nominal geometry. This is the same reason ChArUco **saddle points** are
+preferred over tag corners (§7.1).
+
+![Corner refinement comparison](docs/img/calibration/r6_40cm_corner_refine.png)
+
+*R6, 40 cm set (`scripts/plot_corner_refine.py`). **Left:** RMS of each
+view (train and holdout) for the three modes, log scale; the junction step
+gains a factor 7 over the edge lines, which gain a factor 5 over OpenCV's
+coarse corners. **Centre:** for each of 1104 corners, the edge-line corner
+minus the junction corner, split along the two tag edges that meet there
+(outward > 0), in mm on the board. The cloud sits at +0.21 / +0.21 mm, not
+at 0: each printed edge is ≈ 0.21 mm outside its nominal place. **Right:**
+one junction at full resolution (≈ 96 µm per pixel). The tag (black, top
+right) and its corner square (black, bottom left) overlap in a small black
+bridge, ≈ 5 px wide. The edge lines give the corner of the enlarged tag (×);
+the junction step finds the centre of the overlap (•), which stays at the
+nominal corner when both shapes grow equally.*
+
+The junction step has a limit: when the overlap of the two grown shapes is
+large in pixels (≈ 21 px at ~15 cm, against ≈ 6 px at 40 cm), the junction
+is a small black blob rather than a point, `cornerSubPix` wanders, and the
+tag is rejected (see the 15 cm example in §7.6).
 
 ### 7.3 Holdout validation
 
@@ -389,19 +521,24 @@ outlier views by the same rule. `calibrate` warns about unstable intrinsics
 only when the holdout core RMS or median view exceeds 1.5 × the train
 value, and lists bad holdout views separately.
 
-### 7.4 Reading the plots (R6, 20 cm set)
+### 7.4 Reading the plots (R6, 40 cm set)
 
-Canon R6 + RF 35 mm, MF at ~20 cm, f/8, `OPENCV` model, `--min-points 12`.
+Canon R6 + RF 35 mm, manual focus, f/8, `OPENCV` model, `--min-points 12`,
+hand-held. 20 and 30 cm: ISO 1600, 1/125 s. 40 and 15 cm: more light,
+ISO 800, 1/180 s. The 40 cm set is the best so far: sharper edges (median
+3.3 px, against 5.2 px), about 96 points per view, no rejected view.
 
 | Set | $f_x = f_y$ [px] | train RMS | holdout core RMS | holdout median view | bad holdout views | blur filter |
 |---|---|---|---|---|---|---|
 | 20 cm | 5859.5 | 0.91 px | **0.91 px** | 0.63 px | 1 / 12 | 5.2 % of points |
 | 30 cm | 5743.5 | 1.66 px | **1.28 px** | 1.06 px | 2 / 12 | 3.6 % of points |
+| 40 cm | 5630.1 | 0.48 px | **0.49 px** | 0.45 px | 0 / 9 | 0.1 % of points |
+| 15 cm | n/a | | | | | at most 1 tag per frame (§7.6): not calibratable |
 
 The holdout core RMS is no larger than the train RMS: the intrinsics
-generalise. The focal length differs by 2 % between the two focus settings
-(focus breathing), hence one calibration per focus setting. The plain
-holdout RMS (2.6 and 3.0 px) is driven by the 1–2 bad views. They are not
+generalise. The focal length differs by 2 % between consecutive focus
+settings (focus breathing), hence one calibration per focus setting. At 20
+and 30 cm, the plain holdout RMS (2.6 and 3.0 px) is driven by the 1–2 bad views. They are not
 blurrier than the others; steep obliquity is suspected (open).
 
 Marker shapes code the view status in all plots: **dot = train**,
@@ -411,18 +548,20 @@ Marker shapes code the view status in all plots: **dot = train**,
 after the pose-only fit (holdout). Rejected views are the ones dropped by
 the outlier rounds; they are shown with their RMS at the time they were
 dropped. Dashed line: train RMS; dotted line: outlier threshold (3 × the
-median train view).
+median train view). In the 40 cm set every view is far below the threshold,
+nothing was rejected, and the holdout views (×) fall among the train views.
 
-![Per-view reprojection error](docs/img/calibration/r6_20cm_per_view_error.png)
+![Per-view reprojection error](docs/img/calibration/r6_40cm_per_view_error.png)
 
 **Residuals.** Left: every residual vector $(\Delta u, \Delta v)$, projected
 minus detected. A round cloud centred on zero means noise only; an
 elongated or offset cloud means a systematic error. Right: residual size
 against the distance from the principal point. A rising trend towards the
-edge means the distortion model is too simple (try `FULL_OPENCV`). Here it
-is flat; the few large points are the bad views.
+edge means the distortion model is too simple (try `FULL_OPENCV`). Here the
+cloud is round, mostly within ±1 px, and the error rises only slightly
+beyond 0.6 of the half diagonal (worth a `FULL_OPENCV` comparison, open).
 
-![Reprojection residuals](docs/img/calibration/r6_20cm_residuals.png)
+![Reprojection residuals](docs/img/calibration/r6_40cm_residuals.png)
 
 **Coverage.** The sensor (not the board) is cut into 8 × 6 equal **image
 cells** of 684 × 608 px. The cells have nothing to do with the 60 mm board
@@ -433,11 +572,14 @@ fraction of occupied cells. Why it matters: the distortion is only
 constrained where there are points, and it is strongest in the image
 corners. An empty cell (hatched) means the model is extrapolated there, and
 `calibrate` warns if fewer than 75 % of the cells or any corner cell are
-empty. At 20 cm the board overfills the frame (about 190 × 125 mm visible),
-so each view holds only 4–9 tags (≈ 15 points); together the views still
-cover the whole sensor.
+empty. At 40 cm the field (about 380 × 255 mm) is close to the board size
+(350 mm), so each view holds many tags (about 96 points). All cells are
+occupied, but the outer columns are thin: the corner cells hold only 2–5
+points, against 100–150 in the centre. More views with the board in the
+image corners would help. (At 20 cm, by contrast, the board overfills the
+frame and each view holds only about 15 points.)
 
-![Sensor coverage](docs/img/calibration/r6_20cm_coverage.png)
+![Sensor coverage](docs/img/calibration/r6_40cm_coverage.png)
 
 **Lens distortion.** What the fitted model does to the image, **in sensor
 pixels**. For a point imaged by an ideal pinhole camera with the same
@@ -445,15 +587,17 @@ $f_x, f_y, c_x, c_y$, the arrow goes from that ideal position to where the
 real lens puts it. Arrows are magnified (the key gives the gain and a
 reference length); the colour map and contours give the true displacement.
 Here it is barrel distortion: points are pulled toward the centre, by about
-50 px in the corners. The orange **dashed line** is the convex hull of all
+55 px at the edge of the data and about 70 px (extrapolated) in the image
+corners. The orange **dashed line** is the convex hull of all
 train points. Inside it the model is fitted to data; outside it, it is
 extrapolated. Right: the radial profile from the principal point (+) to the
 farthest corner, in px and in % of the corner radius; the shaded part is
 beyond the farthest train point.
 
-![Lens distortion](docs/img/calibration/r6_20cm_distortion.png)
+![Lens distortion](docs/img/calibration/r6_40cm_distortion.png)
 
-The 30 cm plots are in `runs/calib/r6_calib_30cm_opencv/`.
+The 20 and 30 cm plots are in `runs/calib/r6_calib_20cm_opencv/` and
+`runs/calib/r6_calib_30cm_opencv/`.
 
 ### 7.5 Ground sampling distance (GSD) and scale
 
@@ -529,6 +673,107 @@ Other differences to keep in mind:
   dense surfaces typically land at 1–2 GSD. For a TAPP phantom (dm scale)
   a 50–70 µm GSD is ample; nerve-scale work needs 5–20 µm (macro optics,
   target C).
+
+### 7.6 Capturing calibration images
+
+**Must the whole target be captured?** No. Calibration needs known points
+spread over the whole **image** (sensor), not over the whole **board**.
+Every AprilGrid or ChArUco corner carries an ID, so each image is located on
+the board on its own. Two-thirds of the board, or a different part of it in
+each image, is fine, provided that:
+
+- each image holds enough points (`--min-points`, at least 12–16, from 4 or
+  more tags, not all in one line);
+- together, the images put points in every part of the sensor, the corners
+  included (§7.4, coverage plot).
+
+**Must the sensor stay parallel to the target?** No, and it must not. With
+all images parallel to the board, the focal length and the distance cannot
+be told apart: "longer lens, farther away" and "shorter lens, closer" give
+the same image of a flat board. The principal point is then poorly
+constrained too. Zhang's method needs the board seen from several
+**non-parallel** directions. Capture:
+
+- tilts of about 20–40° about both board axes (top/bottom and left/right
+  closer to the camera);
+- a few rolls about the optical axis (camera at 0° and 90°);
+- the board moved into every region of the image, corners included. Parallel
+  shots are useful here, but must not be the whole set.
+
+This gets **more** important at high magnification and with long lenses:
+perspective weakens, and the focal length / distance ambiguity grows.
+
+The measured camera-to-target distance does not need to be accurate (±3 cm
+is fine). The calibration estimates the pose of every image itself; the
+nominal distance only names the focus setting.
+
+**High magnification: tilt against depth of field.** At close range the
+depth of field (DOF) is small,
+
+```math
+\text{DOF} \approx \frac{2\, N\, c\, (1 + m)}{m^2},
+```
+
+with $N$ the f-number, $c$ the acceptable blur circle (here ~2 px = 13 µm on
+the R6) and $m$ the magnification. At f/8: $m \approx 0.075$ (R6 + 35 mm
+at ~40 cm) gives ~40 mm, but $m \approx 0.3$ gives only ~3 mm. Tilting a
+100 mm wide field by 20° spreads it over ~35 mm of depth, so only a strip of
+the board stays sharp. Ways to deal with it:
+
+- A partially sharp image is acceptable: the blur filter drops the defocused
+  tags, and the sharp strip counts if it has enough points.
+- Many moderate tilts (10–20°) instead of a few steep ones.
+- Stop down (f/11; diffraction is still acceptable with 6.56 µm pixels).
+- Above all, **a target scaled to the field of view** (target C, or a small
+  ChArUco), so that each image holds many small tags. Example below.
+- A rigid mount (robot arm, gantry, focusing rail) instead of hand-holding:
+  at high magnification, shake blur dominates.
+
+**Example: our AprilGrid at ~15 cm is unusable.** The tags are too large
+for the field. The R6 then sees about 115 × 75 mm of the board
+(magnification ≈ 0.3), and a tag is decoded only if its whole black square
+*and* a white margin around it are in the image (about 55 × 55 mm). So:
+
+- at most **one** complete tag fits, and only when the camera is roughly
+  centred on it (about ±30 mm of freedom horizontally, ±10 mm vertically).
+  Tags cut by the frame edge cannot be decoded;
+- its 4 corners therefore always lie in the middle of the image: the
+  corners of the sensor, where distortion matters most, are never covered;
+- 4 points on a plane give exactly the 8 equations of that plane's
+  homography: no redundancy at all within a view, so nothing to measure
+  the distortion with.
+
+![Unusable 15 cm frame](docs/img/calibration/r6_15cm_unusable_308A4970.jpg)
+
+*Frame 308A4970 (R6 at ~15 cm, f/8). **A** (blue): the only complete tag;
+its black square reaches the top edge of the image (orange line), with no
+white margin, so it is not detected. **B** (orange): neighbouring tags cut
+by the frame edges, not decodable. Result: no point at all in this image.*
+
+Over the 82 frames of the 2026-11-18 set:
+
+- 10 frames: no tag detected (as above);
+- 48 frames: one tag found, but rejected by the X-junction step (§7.2): at
+  ≈ 21 µm per pixel the print spread makes the tag and its corner square
+  overlap by ≈ 21 px, so there is no clean saddle;
+- 24 frames: one tag, 4 points, all in one square near the centre.
+
+Accepting the rejected tags does not help: with `--corner-refine lines
+--min-points 4`, 42 frames give 104 points covering 27 % of the sensor, and
+the fit is meaningless ($k_1$ = −0.70 instead of −0.09, principal point
+600 px off). The set cannot be calibrated with this board, whatever the
+capture quality.
+
+**Checklist** (any scale):
+
+1. Manual focus at the scan's setting, then don't touch the ring; IS and
+   IBIS off.
+2. Light enough for a low ISO and a short exposure; check the sharpness in
+   the preview.
+3. 40–80 images: tilts in all directions, a few rolls, board in every image
+   region.
+4. After `calibrate`: no empty corner cells, holdout core RMS ≈ train RMS,
+   few rejected views, median edge width close to 2–3 px (`report.json`).
 
 ## 8. Evaluation (what "accurate" means here)
 

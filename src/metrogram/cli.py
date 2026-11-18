@@ -20,6 +20,21 @@ def _cmd_check_config(args: argparse.Namespace) -> int:
     return status
 
 
+def _cmd_target_svg(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from metrogram.config import CharucoTarget
+    from metrogram.target_svg import charuco_svg
+
+    target = load_config(args.target)
+    if not isinstance(target, CharucoTarget):
+        raise ConfigError(f"{args.target}: only ChArUco targets can be generated so far")
+    out = Path(args.out or f"{target.name}.svg")
+    out.write_text(charuco_svg(target, page=None if args.page == "fit" else args.page))
+    print(f"wrote {out} (print at 100 %, then measure and update square_size_m)")
+    return 0
+
+
 def _cmd_calibrate(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -42,11 +57,12 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
         reject_factor=args.reject_factor,
         blur_rel=args.blur_rel,
         blur_floor_px=args.blur_floor_px,
+        corner_refine=args.corner_refine,
         seed=args.seed,
     )
     source = Source(args.source)
     log = None if args.quiet else sys.stderr
-    res = calibration.run(source, make_detector(target), s, log=log)
+    res = calibration.run(source, make_detector(target, args.corner_refine), s, log=log)
     if device is not None and res.image_size != (device.sensor.width_px, device.sensor.height_px):
         res.warnings.append(
             f"image size {res.image_size} != sensor {device.sensor.width_px}x"
@@ -279,11 +295,33 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument(
         "--blur-floor-px", type=float, default=3.0, help="never drop tags sharper than this [px]"
     )
+    c.add_argument(
+        "--corner-refine",
+        choices=["full", "lines", "none"],
+        default="full",
+        help="AprilGrid corners: full = edge lines + X-junction step, lines = edge-line "
+        "intersections only, none = coarse OpenCV corners (blur filter off)",
+    )
     c.add_argument("--seed", type=int, default=0)
     c.add_argument("--focus-note", default="", help="focus setting/distance, stored in output")
     c.add_argument("--save-frames", action="store_true", help="write annotated used frames")
     c.add_argument("-q", "--quiet", action="store_true")
     c.set_defaults(func=_cmd_calibrate)
+
+    c = sub.add_parser(
+        "target-svg",
+        help="write a printable SVG (mm units) of a ChArUco target config",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    c.add_argument("target", help="target config YAML (type: charuco)")
+    c.add_argument("-o", "--out", help="output SVG (default <target name>.svg)")
+    c.add_argument(
+        "--page",
+        choices=["a4", "a3", "letter", "fit"],
+        default="a4",
+        help="landscape page size; fit = board + margins only",
+    )
+    c.set_defaults(func=_cmd_target_svg)
 
     c = sub.add_parser(
         "extract-frames",

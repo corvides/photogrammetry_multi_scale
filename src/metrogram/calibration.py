@@ -76,6 +76,7 @@ class CalibrationSettings:
     # max(blur_floor_px, blur_rel x median edge width of the whole scan). 0 = off.
     blur_rel: float = 2.0
     blur_floor_px: float = 3.0
+    corner_refine: str = "full"  # AprilGrid corner refinement (recorded; used by the detector)
     max_reject_rounds: int = 5
     seed: int = 0
 

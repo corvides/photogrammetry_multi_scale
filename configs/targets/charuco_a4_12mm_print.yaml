@@ -1,0 +1,21 @@
+kind: target
+type: charuco
+name: charuco_a4_12mm_print
+squares_x: 20
+squares_y: 14
+square_size_m: 0.012       # NOMINAL: replace with the caliper-measured value after printing
+marker_size_m: 0.009       # 0.75 x square
+dictionary: DICT_5X5_1000
+legacy_pattern: false
+material: printed paper on float glass (stopgap; see README section 7.1)
+dimensions_certified: false
+notes: >
+  Stopgap target until a certified one can be bought. Generated with
+  `metrogram target-svg configs/targets/charuco_a4_12mm_print.yaml`, printed at 100 %.
+  Board 240 x 168 mm: about 9 x 6 squares visible with the R6 + 35 mm at ~15 cm,
+  and about 60 % of the field at ~40 cm. After printing and mounting, measure between
+  SAME-SIDE edges (left edges of the first and last columns: 228 mm = 19 squares;
+  top edges of the first and last rows: 156 mm = 13 squares), not the outer extent
+  (ink/toner spread makes black areas ~0.2 mm larger per edge). Set square_size_m to
+  the measured length / 19 (or / 13); if the two axes differ by more than 0.1 %,
+  reprint (anisotropic printer scale is not modelled).

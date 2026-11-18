@@ -162,7 +162,7 @@ def residuals(result, path: Path):
 def per_view(result, path: Path):
     vs = [v for v in result.views if v.rms_px is not None]
     vs.sort(key=lambda v: v.index)
-    fig, ax = plt.subplots(figsize=(max(6, 0.12 * len(vs) + 2), 4), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(max(9, 0.12 * len(vs) + 2), 4.3), constrained_layout=True)
     x = np.arange(len(vs))
     y = np.array([v.rms_px for v in vs])
     ax.vlines(x, 0, y, color="#d6d5d0", lw=1, zorder=1)
@@ -177,9 +177,9 @@ def per_view(result, path: Path):
     step = max(1, len(vs) // 25)
     ax.set_xticks(x[::step], [v.key for v in vs][::step], rotation=60, ha="right", fontsize=7)
     ax.set_ylabel("view RMS [px]")
-    ax.set_ylim(0, 1.3 * float(y.max()))  # headroom for the legend
+    ax.set_ylim(0, max(1.3 * float(y.max()), 1.1 * (core or 0)))  # legend headroom
     ax.set_title(
-        "Per-view reprojection error (train: fitted views; holdout: intrinsics frozen, "
+        "Per-view reprojection error\n(train: fitted views; holdout: intrinsics frozen, "
         "pose only; rejected: outliers dropped from the fit)",
         loc="left",
         fontsize=8.5,

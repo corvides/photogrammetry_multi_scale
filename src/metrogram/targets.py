@@ -39,23 +39,32 @@ class AprilGridDetector:
 
     Tags are found on a copy downscaled to at most ``detect_max_px`` (OpenCV's
     adaptive threshold and contour steps fail on tags hundreds of pixels wide,
-    as in close-range full-frame shots), then every corner is refined with
-    cornerSubPix on the full-resolution image. On Kalibr boards each tag corner
-    touches a small black square, so it is an X-junction: an ideal subpixel
-    feature. Refinement runs twice: a wide window (15 % of the shortest tag
-    side; on oblique, slightly blurred views the coarse corner can sit tens of
-    pixels inside the tag) then a narrow one (5 %). Both stay below the 2-bit
-    border and the corner squares (20 % of the side), so the only structure in
-    the window is the junction itself.
+    as in close-range full-frame shots). Corners are then refined on the
+    full-resolution image, depending on ``corner_refine``:
+
+    - ``"full"`` (default): edge lines fitted on the middle 60 % of each tag
+      side, intersected, then a small cornerSubPix on the X-junction where the
+      tag corner meets a Kalibr corner square. Tags whose junction step moves
+      too far are rejected (no clean junction).
+    - ``"lines"``: the edge-line intersections only (no junction step).
+    - ``"none"``: OpenCV's coarse corners from the downscaled copy, scaled up
+      (no subpixel refinement, no edge width: the blur filter is then off).
     """
 
     # OpenCV corner order of a tag in its canonical upright orientation, as
     # unit-square positions in a y-up frame: TL, TR, BR, BL.
     _CANONICAL = np.array([[0, 1], [1, 1], [1, 0], [0, 0]], dtype=np.float64)
 
-    def __init__(self, target: AprilGridTarget, detect_max_px: int = 2000):
+    REFINE_MODES = ("full", "lines", "none")
+
+    def __init__(
+        self, target: AprilGridTarget, detect_max_px: int = 2000, corner_refine: str = "full"
+    ):
+        if corner_refine not in self.REFINE_MODES:
+            raise ValueError(f"corner_refine must be one of {self.REFINE_MODES}")
         self.t = target
         self.detect_max_px = detect_max_px
+        self.corner_refine = corner_refine
         family = getattr(cv2.aruco, f"DICT_APRILTAG_{target.tag_family}")
         params = cv2.aruco.DetectorParameters()
         params.markerBorderBits = target.border_bits
@@ -70,7 +79,9 @@ class AprilGridDetector:
         self.n_tags = target.rows * target.cols
 
     @staticmethod
-    def _refine(gray: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, float] | None:
+    def _refine(
+        gray: np.ndarray, q: np.ndarray, junction: bool = True
+    ) -> tuple[np.ndarray, float] | None:
         """Refine a tag's 4 corners on the full-resolution image; None if unreliable.
 
         Returns (corners, edge width in px): the width (step height / max slope
@@ -80,8 +91,9 @@ class AprilGridDetector:
            (clean: away from the corner squares, which touch the tag at the
            corners and can drag coarse vertices along the merged "neck").
         2. Corners = intersections of adjacent edge lines.
-        3. Final small-window cornerSubPix on the X-junction (absorbs the bias
-           of straight-line fits on edges curved by lens distortion).
+        3. If ``junction``: final small-window cornerSubPix on the X-junction
+           (absorbs the bias of straight-line fits on edges curved by lens
+           distortion); rejected if it moves more than half its window.
         """
         from scipy.ndimage import map_coordinates
 
@@ -159,12 +171,15 @@ class AprilGridDetector:
             return None
         if np.any(out[:, 1] > h - half - 2):
             return None
+        width = float(np.median(np.concatenate(widths)))
         q1 = out.astype(np.float32)
+        if not junction:
+            return q1, width
         crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 50, 0.01)
         cv2.cornerSubPix(gray, q1, (half, half), (-1, -1), crit)
         if np.any(np.linalg.norm(q1 - out, axis=1) > max(1.0, 0.5 * half)):
             return None  # no clean junction near the line intersection
-        return q1, float(np.median(np.concatenate(widths)))
+        return q1, width
 
     def tag_corners(self, tag_id: int) -> np.ndarray:
         """(4, 3) board coordinates of a tag's corners, in OpenCV detection order."""
@@ -199,11 +214,12 @@ class AprilGridDetector:
                 continue  # stray tag from another board
             # pixel centres at integers: small (u + 0.5) / scale - 0.5 = full u
             q = ((c.reshape(4, 2).astype(np.float64) + 0.5) / scale - 0.5).astype(np.float32)
-            r = self._refine(gray, q)
-            if r is None:
-                continue
-            q, width = r
-            edge.append(np.full(4, width))
+            if self.corner_refine != "none":
+                r = self._refine(gray, q, junction=self.corner_refine == "full")
+                if r is None:
+                    continue
+                q, width = r
+                edge.append(np.full(4, width))
             obj.append(self.tag_corners(tag_id))
             img.append(q)
             pid.append(tag_id * 4 + np.arange(4))
@@ -213,7 +229,7 @@ class AprilGridDetector:
             np.vstack(obj).astype(np.float32),
             np.vstack(img).astype(np.float32),
             np.concatenate(pid),
-            np.concatenate(edge),
+            np.concatenate(edge) if edge else None,
         )
 
 
@@ -253,9 +269,10 @@ class CharucoDetector:
 BoardDetector = AprilGridDetector | CharucoDetector
 
 
-def make_detector(target: Target) -> BoardDetector:
+def make_detector(target: Target, corner_refine: str = "full") -> BoardDetector:
+    """Detector for a target; ``corner_refine`` applies to AprilGrid only."""
     if isinstance(target, AprilGridTarget):
-        return AprilGridDetector(target)
+        return AprilGridDetector(target, corner_refine=corner_refine)
     if isinstance(target, CharucoTarget):
         return CharucoDetector(target)
     raise TypeError(f"unsupported target {type(target).__name__}")

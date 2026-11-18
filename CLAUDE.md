@@ -36,6 +36,15 @@ reports) for medical phantoms. Full background and decisions are in
 - Terminal + vim. CLIs over GUIs/notebooks; plain-text outputs (YAML/JSON/
   CSV, PNG plots); no interactive windows required (add a `--show` flag
   instead).
+- **`<` in Markdown prose (vim highlighting).** The user's vim (preservim/
+  vim-markdown) reads a bare `<` in Markdown text or tables as the start of
+  an HTML tag, running to the next `>` (even many lines later). This flips
+  the highlighting of everything in between. `<` is fine inside inline code,
+  fenced code blocks and `$…$` / math blocks, and everywhere outside `.md`
+  files; `>` is always fine. Only a bare `<` in prose or a table cell is a
+  problem: there write it in words ("under 5 mm"), as `≤`, or in backticks.
+  Backslash-escaping (`\<`) does not help. GitHub renders all of these
+  correctly; this is a vim-only issue.
 - Units: **metres internally** (Kalibr/COLMAP convention); reports may show
   mm. Label units explicitly in field names (e.g. `rms_px`, `err_mm`).
 
@@ -63,6 +72,13 @@ reports) for medical phantoms. Full background and decisions are in
     side, line intersection, small cornerSubPix on the X-junction). Each
     corner touches a Kalibr corner square, which drags coarse vertices on
     oblique views, so large-window cornerSubPix alone fails.
+  - **Print spread:** black areas are printed ≈ 0.22 mm larger per edge
+    (2026-11-18: edge-line corners 0.31 mm outward along the diagonal from
+    the X-junction corners, 1104 corners at 40 cm). The X-junction step is
+    therefore essential: `--corner-refine lines` gives 3.4 px RMS and a 0.5 %
+    fx shift, against 0.48 px with `full`. At ~21 µm/px (15 cm) the
+    tag / corner-square overlap is ≈ 21 px, cornerSubPix wanders and tags are
+    rejected. Caliper checks must use same-side edges, never outer extents.
   - **Verified** (2026-11-12, video frame 368): tag 0 at the board's
     bottom-left (printed caption at bottom), ids row-wise left→right, rows
     going up. Board frame: x right, y up, origin = outer bottom-left corner of
@@ -73,13 +89,17 @@ reports) for medical phantoms. Full background and decisions are in
     homography check of 2026-11-12 used the 1-bit border and old dimensions.)
   - Detect with OpenCV `DICT_APRILTAG_36h11`.
 - Planned targets: ChArUco (A4, certified) for the camera; small matte
-  ChArUco for the stereo endoscope.
+  ChArUco for the stereo endoscope. Purchases are hard in the user's unit:
+  stopgap = `configs/targets/charuco_a4_12mm_print.yaml` printed from
+  `metrogram target-svg` (`target_svg.py`: layout taken from OpenCV's
+  CharucoBoard, mm units, one evenodd path per marker, scale bar) on matte
+  paper, mounted on float glass, square size set from a caliper measurement.
 
 ## Repo conventions
 
 - Package `metrogram` in `src/metrogram/`; CLI `metrogram <subcommand>`
   (argparse, `cli.py`). Existing: `check-config`, `calibrate`,
-  `extract-frames`, `sfm`, `markers`, `view`, `dense`. Planned: `evaluate`,
+  `target-svg`, `extract-frames`, `sfm`, `markers`, `view`, `dense`. Planned: `evaluate`,
   `register`.
 - `config.py`: strict frozen dataclasses loaded from YAML (`kind:
   device|target|preset`; targets also need `type: aprilgrid|charuco`).
